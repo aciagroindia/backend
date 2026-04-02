@@ -56,8 +56,11 @@ app.use(express.json()); // Allows us to parse JSON in requests
 
 // Optimized CORS configuration for frontend
 const corsOptions = {
-    origin: 'http://localhost:3000',  // Allow only your frontend to connect
-    credentials: true, // Allow cookies/authorization headers to be sent
+  origin: [
+    'http://localhost:3000',
+    'https://frontend-rho-two-37.vercel.app'
+  ],
+  credentials: true, // Allow cookies/authorization headers to be sent
 };
 app.use(cors(corsOptions));
 app.use(helmet());       // Adds security headers to protect your app
@@ -97,7 +100,7 @@ app.use("/admin", adminDirectRoutes);
 
 // Test Route
 app.get('/', (req, res) => {
-    res.send('API is running successfully...');
+  res.send('API is running successfully...');
 });
 
 // Error Handling Middleware
@@ -138,5 +141,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-    console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
 });
