@@ -42,16 +42,15 @@ exports.registerUser = async (req, res, next) => {
 };
 
 // 2. LOGIN USER (Email or Phone)
+// 2. LOGIN USER (Email or Phone)
 exports.loginUser = async (req, res, next) => {
     try {
-        const { email, phone, password } = req.body; // email and phone are now optional
+        const { email, phone, password } = req.body;
 
-        // Joi validation in the route now handles this, but this is a good safeguard.
         if (!email && !phone) {
             throw createError(400, "Please provide email or phone number.");
         }
 
-        // Dynamically create the query based on provided input
         const query = email ? { email: email.toLowerCase() } : { phone };
         const user = await User.findOne(query);
 
@@ -66,13 +65,13 @@ exports.loginUser = async (req, res, next) => {
                         email: user.email, 
                         phone: user.phone,
                         role: user.role, 
-                        isAdminApproved: user.isAdminApproved 
+                        isAdminApproved: user.isAdminApproved,
+                        avatar: user.avatar // 👈 YAHAN AVATAR ADD KIYA HAI
                     },
                     token: generateToken(user._id)
                 }
             });
         } else {
-            // Generic error message for security
             throw createError(401, "Invalid credentials.");
         }
     } catch (error) { next(error); }
