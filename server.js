@@ -58,7 +58,7 @@ app.use(express.json()); // Allows us to parse JSON in requests
 const corsOptions = {
   origin: [
     'http://localhost:3000',
-    'https://frontend-rho-two-37.vercel.app'
+    'https://aciagro.com'
   ],
   credentials: true, // Allow cookies/authorization headers to be sent
 };
