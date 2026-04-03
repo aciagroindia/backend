@@ -15,9 +15,14 @@ exports.sendApprovalEmail = async (adminName, adminEmail, requestId) => {
     // Raw ID ki jagah ek secure, short-lived token generate karein
     const token = generateApprovalToken(requestId);
 
-    // Links mein ab token ka istemal hoga
-    const approveLink = `${process.env.BASE_URL}/api/admin/email-approve/${token}`;
-    const rejectLink = `${process.env.BASE_URL}/api/admin/email-reject/${token}`;
+    // 👇 Yahan par Dynamic URL ka logic laga diya
+    const backendURL = process.env.NODE_ENV === "production" 
+        ? "https://aci-agro.onrender.com" 
+        : (process.env.BASE_URL || "http://localhost:5000");
+
+    // Links mein ab dynamic backendURL ka istemal hoga
+    const approveLink = `${backendURL}/api/admin/email-approve/${token}`;
+    const rejectLink = `${backendURL}/api/admin/email-reject/${token}`;
 
     const mailOptions = {
         from: `"ACI Agro Admin System" <${process.env.EMAIL_USER}>`,
