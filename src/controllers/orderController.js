@@ -1,8 +1,15 @@
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
 const Order = require("../models/Order");
 const Cart = require("../models/cart.model");
 const Product = require("../models/Product");
 const Notification = require("../models/Notification");
 const createError = require("http-errors");
+
+const razorpay = new Razorpay({
+    key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
 
 // CREATE ORDER
 exports.createOrder = async (req, res, next) => {
@@ -41,78 +48,114 @@ exports.createOrder = async (req, res, next) => {
     }
     // --- End Verification ---
 
+    // 1. RAZORPAY ORDER CREATE KARNA (Agar prepaid hai)
+    let rzpOrder = null;
+    if (paymentMethod !== 'COD') {
+        const options = {
+            amount: Math.round(serverCalculatedTotal * 100), // Paise me convert
+            currency: "INR",
+            receipt: `rcpt_${Date.now()}`
+        };
+        rzpOrder = await razorpay.orders.create(options);
+    }
+
+    // 2. MONGODB ME ORDER CREATE KARNA
     const order = await Order.create({
-      customer: req.user.id, // Changed from 'user' to 'customer' as per model update
+      customer: req.user.id,
       orderItems,
-      shippingInfo: shippingAddress, // FIX: Match the 'shippingInfo' field in the Order model
+      shippingInfo: shippingAddress,
       totalAmount: serverCalculatedTotal,
-      paymentMethod: paymentMethod || 'COD', // FIX: Use paymentMethod from body or default
-      // Note: 'isPaid' will default to false, and 'orderStatus' will default to 'created' as per the model
+      paymentMethod: paymentMethod || 'Razorpay',
+      paymentStatus: 'pending', 
+      orderStatus: paymentMethod === 'COD' ? 'processing' : 'created', // COD Fix
+      razorpay_order_id: rzpOrder ? rzpOrder.id : null, 
     });
 
-    // CREATE NOTIFICATION
-    await Notification.create({
-        type: "order",
-        text: `New order received #${order._id.toString().slice(-4)}`,
-        link: "/admin/orders"
-    });
+    // 3. AGAR COD HAI, TOH STOCK AUR CART YAHIN UPDATE KAREIN
+    if (paymentMethod === 'COD') {
+        const bulkStockUpdate = orderItems.map(item => ({
+            updateOne: {
+                filter: { _id: item.product },
+                update: { $inc: { stock: -item.quantity, numSales: item.quantity, salesCount: item.quantity } }
+            }
+        }));
+        await Product.bulkWrite(bulkStockUpdate);
 
-    // CHECK STOCK ALERTS
-    for (const item of items) {
-        const product = await Product.findById(item.productId);
-        if (product.stock <= 10) {
-            await Notification.create({
-                type: "alert",
-                text: `Low stock alert: ${product.name} (${product.stock} left)`,
-                link: `/admin/products`
-            });
+        await Notification.create({
+            type: "order",
+            text: `New COD order received #${order._id.toString().slice(-4)}`,
+            link: "/admin/orders"
+        });
+
+        if (req.body.clearCart !== false) {
+            await Cart.updateOne({ user: req.user.id }, { $set: { items: [] } });
         }
     }
 
-    // Decrease stock for each item in the order
-    const bulkStockUpdate = orderItems.map(item => ({
-      updateOne: {
-        filter: { _id: item.product },
-        update: { $inc: { stock: -item.quantity, numSales: item.quantity, salesCount: item.quantity } }
-      }
-    }));
-    await Product.bulkWrite(bulkStockUpdate);
-
-    // Clear the user's cart after creating an order, unless specified otherwise
-    if (req.body.clearCart !== false) {
-      await Cart.updateOne(
-        { user: req.user.id },
-        { $set: { items: [] } }
-      );
-    }
-
-    res.status(201).json({ success: true, data: order });
+    res.status(201).json({ 
+        success: true, 
+        data: order,
+        razorpayOrderId: rzpOrder ? rzpOrder.id : null
+    });
   } catch (error) {
     next(error);
   }
 };
 
-// FAKE PAYMENT SUCCESS
-exports.fakePaymentSuccess = async (req, res, next) => {
+// VERIFY PAYMENT (For Razorpay Only)
+exports.verifyPayment = async (req, res, next) => {
   try {
-    const { orderId } = req.body;
+      const { orderId, razorpay_payment_id, razorpay_order_id, razorpay_signature, clearCart } = req.body;
 
-    const order = await Order.findByIdAndUpdate(
-      orderId,
-      {
-        paymentStatus: "paid",
-        orderStatus: "processing",
-      },
-      { new: true }
-    );
+      // 1. SIGNATURE VERIFY KARNA (Security)
+      const sign = razorpay_order_id + "|" + razorpay_payment_id;
+      const expectedSign = crypto
+          .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+          .update(sign.toString())
+          .digest("hex");
 
-    if (!order) {
-      throw createError(404, "Order not found");
-    }
+      if (razorpay_signature !== expectedSign) {
+          return res.status(400).json({ success: false, message: "Payment verification failed! Fake attempt." });
+      }
+
+      // 2. MONGODB ME ORDER UPDATE KARNA
+      const order = await Order.findByIdAndUpdate(
+          orderId,
+          {
+              paymentStatus: "paid",
+              orderStatus: "processing",
+              razorpay_payment_id,
+              razorpay_signature
+          },
+          { new: true }
+      );
+
+      if (!order) {
+          throw createError(404, "Order not found");
+      }
+
+      // 3. PREPAID ORDER KE LIYE STOCK MINUS, NOTIFICATION AUR CART CLEAR
+      const bulkStockUpdate = order.orderItems.map(item => ({
+          updateOne: {
+              filter: { _id: item.product },
+              update: { $inc: { stock: -item.quantity, numSales: item.quantity, salesCount: item.quantity } }
+          }
+      }));
+      await Product.bulkWrite(bulkStockUpdate);
+
+      await Notification.create({
+          type: "order",
+          text: `New Prepaid order received #${order._id.toString().slice(-4)}`,
+          link: "/admin/orders"
+      });
+
+      if (clearCart !== false) {
+           await Cart.updateOne({ user: order.customer }, { $set: { items: [] } });
+      }
 
     res.json({
       success: true,
-      message: "Payment successful (DEV MODE)",
+      message: "Payment successful and verified",
       data: { order },
     });
   } catch (error) {
@@ -123,7 +166,7 @@ exports.fakePaymentSuccess = async (req, res, next) => {
 // GET MY ORDERS
 exports.getMyOrders = async (req, res, next) => {
   try {
-    const orders = await Order.find({ customer: req.user.id }) // Changed from 'user' to 'customer'
+    const orders = await Order.find({ customer: req.user.id })
       .populate('orderItems.product', 'name slug image')
       .sort({ createdAt: -1 });
 
@@ -137,15 +180,14 @@ exports.getMyOrders = async (req, res, next) => {
 exports.getOrderById = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id)
-      .populate('customer', 'name email') // Populate customer details as per admin controller
-      .populate('orderItems.product', 'name image price'); // Include price as per admin controller
+      .populate('customer', 'name email')
+      .populate('orderItems.product', 'name image price');
 
     if (!order) {
       throw createError(404, "Order not found");
     }
 
-    // Security check: ensure the user requesting the order is the one who created it, or an admin
-    if (order.customer._id.toString() !== req.user.id && req.user.role !== 'admin') {
+    if (order.customer._id.toString() !== req.user.id && req.user.role !== 'admin' && req.user.role !== 'owner') {
         return res.status(403).json({ success: false, message: "Not authorized to view this order" });
     }
 
@@ -153,4 +195,61 @@ exports.getOrderById = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+// GET ALL ADMIN ORDERS (Strictly Filtered)
+exports.getAllAdminOrders = async (req, res, next) => {
+    try {
+      const orders = await Order.find({
+          $or: [
+              { paymentMethod: 'COD' },
+              { paymentStatus: 'paid' }
+          ]
+      })
+      .populate('customer', 'name email')
+      .sort({ createdAt: -1 });
+  
+      res.json({ success: true, count: orders.length, data: orders });
+    } catch (error) {
+      next(error);
+    }
+};
+
+// ==========================================
+// NEW: CANCEL PENDING ONLINE ORDER (Customer)
+// ==========================================
+exports.cancelMyOrder = async (req, res, next) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        
+        if (!order) {
+            return res.status(404).json({ success: false, message: "Order not found" });
+        }
+
+        // Security: Check if order belongs to the user
+        if (order.customer.toString() !== req.user.id) {
+            return res.status(403).json({ success: false, message: "Not authorized to cancel this order" });
+        }
+
+        // Security: Paid ya COD order user cancel nahi kar sakta
+        if (order.paymentStatus === 'paid' || order.paymentMethod === 'COD') {
+            return res.status(400).json({ 
+                success: false, 
+                message: "You cannot cancel a confirmed order. Please contact support." 
+            });
+        }
+
+        // Agar order pehle hi cancel ho chuka hai
+        if (order.orderStatus === 'cancelled') {
+            return res.status(400).json({ success: false, message: "Order is already cancelled." });
+        }
+
+        // Cancel it!
+        order.orderStatus = 'cancelled';
+        await order.save();
+
+        res.json({ success: true, message: "Order cancelled successfully." });
+    } catch (error) {
+        next(error);
+    }
 };

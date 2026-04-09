@@ -1,6 +1,14 @@
 const Order = require("../models/Order");
 const User = require("../models/User");
 
+// FIX: Global strict filter taaki sirf COD aur Paid orders hi analytics me count hon
+const validOrderFilter = {
+  $or: [
+    { paymentMethod: 'COD' },
+    { paymentStatus: 'paid' }
+  ]
+};
+
 const getStartDate = (timeFilter) => {
   const now = new Date();
   let startDate;
@@ -24,12 +32,13 @@ exports.getOverallStats = async (timeFilter = "Last 6 Months") => {
 
   const [totalSalesData, totalOrders, newCustomers] = await Promise.all([
     Order.aggregate([
-      { $match: { createdAt: { $gte: startDate } } }, 
-      // { $match: { paymentStatus: "paid" } }, // Uncomment later if needed
+      // FIX: Date ke sath-sath valid order ka filter bhi lagaya
+      { $match: { createdAt: { $gte: startDate }, ...validOrderFilter } }, 
       { $group: { _id: null, total: { $sum: "$totalAmount" } } },
     ]),
-    Order.countDocuments({ createdAt: { $gte: startDate } }), // FIX: Filter orders by date
-    User.countDocuments({ createdAt: { $gte: startDate } }),  // FIX: thirtyDaysAgo ki jagah startDate lagaya
+    // FIX: Sirf genuine orders hi total orders me count honge
+    Order.countDocuments({ createdAt: { $gte: startDate }, ...validOrderFilter }), 
+    User.countDocuments({ createdAt: { $gte: startDate } }),  
   ]);
 
   const totalSales = totalSalesData[0]?.total || 0;
@@ -48,7 +57,7 @@ exports.getRevenueByMonth = async (timeFilter = "Last 6 Months") => {
     {
       $match: { 
         createdAt: { $gte: startDate },
-        // paymentStatus: "paid", // Uncomment later if needed
+        ...validOrderFilter // FIX: Chart me bhi sirf valid sales aayengi
       },
     },
     {

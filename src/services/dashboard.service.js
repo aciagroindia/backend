@@ -1,11 +1,22 @@
 const Order = require("../models/Order");
 const User = require("../models/User");
 
+// FIX: Global strict filter taaki baar-baar likhna na pade
+const validOrderFilter = {
+    $or: [
+        { paymentMethod: 'COD' },
+        { paymentStatus: 'paid' }
+    ]
+};
+
 exports.getStats = async () => {
-  const totalOrders = await Order.countDocuments();
+  // FIX: Sirf genuine orders count honge
+  const totalOrders = await Order.countDocuments(validOrderFilter);
   const totalUsers = await User.countDocuments();
 
   const revenueAgg = await Order.aggregate([
+    // FIX: Revenue me sirf paid aur COD orders ka paisa judega
+    { $match: validOrderFilter },
     {
       $group: {
         _id: null,
@@ -20,13 +31,13 @@ exports.getStats = async () => {
     orders: totalOrders,
     users: totalUsers,
     revenue: totalRevenue,
-    // Note: Percentage change (+12% etc.) nikaalne ke liye pichle mahine ka data compare karna hoga.
-    // Filhal hum generic values bhej sakte hain ya isko calculate kar sakte hain.
   };
 };
 
 exports.getSalesChart = async () => {
   const sales = await Order.aggregate([
+    // FIX: Chart me bhi sirf valid sales aayengi
+    { $match: validOrderFilter },
     {
       $group: {
         _id: { $month: "$createdAt" },
@@ -45,22 +56,24 @@ exports.getSalesChart = async () => {
 };
 
 exports.getRecentOrders = async () => {
-  const orders = await Order.find()
-    .populate("customer", "name") // Order model mein 'customer' ref hai
+  // FIX: Recent orders me bhi failed orders nahi dikhenge
+  const orders = await Order.find(validOrderFilter)
+    .populate("customer", "name") 
     .sort({ createdAt: -1 })
     .limit(5);
 
+  // FIX: Frontend ki zarurat ke hisaab se exact keys match ki hain
   return orders.map(o => ({
-    _id: o._id,
-    customer: o.customer?.name || "Guest", // String bhej rahe hain
-    totalPrice: o.totalAmount,            // Frontend 'totalPrice' key dhund raha hai
-    orderStatus: o.orderStatus,           // Frontend 'orderStatus' key dhund raha hai
-    createdAt: o.createdAt                // Frontend 'createdAt' key dhund raha hai
+    id: o._id,
+    customerName: o.customer?.name || "Guest", 
+    total: o.totalAmount,            
+    status: o.orderStatus,           
+    date: o.createdAt                
   }));
 };
 
 exports.getNewCustomers = async () => {
-  const users = await User.find({ role: 'user' }) // Sirf customers dikhayein, admins nahi
+  const users = await User.find({ role: 'user' }) 
     .sort({ createdAt: -1 })
     .limit(5);
 
