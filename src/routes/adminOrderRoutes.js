@@ -7,7 +7,8 @@ const {
     getOrderById,
     updateOrderStatus,
     shipOrder,
-    shiprocketWebhook // 👈 Fix 1: Webhook function import kiya
+    shiprocketWebhook,
+    trackOrder // 👈 NAYA IMPORT: Tracking function
 } = require('../controllers/adminOrderController');
 
 // Import authentication middleware
@@ -19,9 +20,8 @@ const adminOnly = [protect, admin, checkAdminAccess];
 
 // ==========================================
 // 🔔 SHIPROCKET WEBHOOK ROUTE 
-// Dhyan de: Ispe 'adminOnly' middleware NAHI lagana hai!
 // ==========================================
-router.post('/webhook/tracking', shiprocketWebhook); // 👈 Fix 2: Route add kiya
+router.post('/webhook/tracking', shiprocketWebhook); 
 
 // Baaki saare admin routes
 router.route('/')
@@ -35,5 +35,9 @@ router.route('/:id/status')
 
 router.route('/:id/ship')
     .post(adminOnly, shipOrder); // POST /api/admin/orders/:id/ship
+
+// 👇 🚀 NAYA ROUTE: TRACKING KE LIYE (404 Error Fix) 👇
+router.route('/:id/track')
+    .get(adminOnly, trackOrder); // GET /api/admin/orders/:id/track
 
 module.exports = router;

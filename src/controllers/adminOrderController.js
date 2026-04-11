@@ -103,29 +103,34 @@ const shipOrder = async (req, res, next) => {
 // ==========================================
 const shiprocketWebhook = async (req, res) => {
     try {
-        // 👇 --- SECURITY CHECK ADDED HERE --- 👇
         const incomingToken = req.headers['x-api-key'];
-        // Render .env se token uthayega, agar wahan nahi mila toh fallback use karega
         const mySecretToken = process.env.SHIPROCKET_WEBHOOK_TOKEN || 'l7cMT9AEPIW#Fyi)RQ[^Ak';
 
         if (incomingToken !== mySecretToken) {
             console.error("🚨 Unauthorized Webhook Attempt! Wrong Token:", incomingToken);
             return res.status(401).send("Unauthorized Access: Invalid Token");
         }
-        // 👆 --------------------------------- 👆
 
         const webhookData = req.body;
-        console.log("🔔 Webhook Received from Shiprocket. Status:", webhookData.current_status);
+        console.log("🔔 Webhook Received. Status:", webhookData.current_status);
+        
+        // 👇 Pura data print karenge taaki pata chale Shiprocket kya bhej raha hai
+        console.log("📦 FULL WEBHOOK DATA:", JSON.stringify(webhookData, null, 2));
 
-        const shipmentId = webhookData.shipment_id;
         const newStatus = webhookData.current_status; 
+        const shipmentId = webhookData.shipment_id;
 
-        // 👇 --- SMART CHECK FOR SHIPROCKET TEST/SAVE --- 👇
-        if (!shipmentId) {
-            console.log("⚠️ Dummy request received. Sending 200 OK to allow Shiprocket to save.");
+        // 👇 SMART CHECK FIX: Ab hum 'status' check karenge dummy ke liye, 'shipmentId' nahi
+        if (!newStatus) {
+            console.log("⚠️ Dummy request received (No Status). Sending 200 OK.");
             return res.status(200).send("Webhook test successful");
         }
-        // 👆 -------------------------------------------- 👆
+
+        // Agar webhook me shipment_id hi nahi aaya
+        if (!shipmentId) {
+            console.log("🚨 Webhook me shipment_id nahi hai! Data update skip kar rahe hain.");
+            return res.status(200).send("Received, but no shipment_id");
+        }
 
         const order = await Order.findOne({ trackingId: String(shipmentId) });
 
@@ -135,7 +140,7 @@ const shiprocketWebhook = async (req, res) => {
                 order.deliveredAt = new Date();
             } else if (newStatus === 'RTO DELIVERED' || newStatus === 'RTO INITIATED') {
                 order.orderStatus = 'returned'; 
-            } else if (newStatus === 'CANCELED') {
+            } else if (newStatus === 'CANCELED' || newStatus === 'CANCELLED') {
                 order.orderStatus = 'cancelled';
             }
             
@@ -152,4 +157,38 @@ const shiprocketWebhook = async (req, res) => {
     }
 };
 
-module.exports = { getOrders, getOrderById, updateOrderStatus, shipOrder, shiprocketWebhook };
+// ==========================================
+// NEW: TRACK ORDER FUNCTION (Frontend ke liye)
+// ==========================================
+const trackOrder = async (req, res, next) => {
+    try {
+        const order = await Order.findById(req.params.id);
+
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        // Agar order ship hi nahi hua hai
+        if (!order.trackingId || order.trackingId === "Pending AWB") {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Tracking details not generated yet. Please wait for the order to be shipped.' 
+            });
+        }
+
+        // Tracking data bhej rahe hain (Ab frontend crash nahi hoga)
+        res.status(200).json({
+            success: true,
+            data: {
+                trackingId: order.trackingId,
+                courier: order.courierName || 'Shiprocket',
+                trackingUrl: `https://shiprocket.co/tracking/${order.trackingId}` // Shiprocket ka direct tracking link
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+module.exports = { getOrders, getOrderById, updateOrderStatus, shipOrder, shiprocketWebhook, trackOrder };
