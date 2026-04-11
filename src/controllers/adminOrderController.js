@@ -38,7 +38,6 @@ const getOrderById = async (req, res, next) => {
 const updateOrderStatus = async (req, res, next) => {
     try {
         const { status } = req.body;
-        // Shiprocket ke liye items ki detail chahiye hoti hai, isliye populate kiya
         const order = await Order.findById(req.params.id)
             .populate('customer', 'name email')
             .populate('orderItems.product', 'name');
@@ -54,13 +53,11 @@ const updateOrderStatus = async (req, res, next) => {
         }
 
         // --- SHIPROCKET MAGIC START ---
-        // Agar admin ne dropdown se 'shipped' select kiya hai
         if (status === 'shipped' && order.orderStatus !== 'shipped') {
             try {
-                // Shiprocket API hit karo
                 const srResponse = await createShiprocketOrder(order);
                 console.log("📦 SHIPROCKET FULL RESPONSE:", JSON.stringify(srResponse, null, 2));
-                // Tracking ID save karo
+                
                 order.trackingId = srResponse.shipment_id ? String(srResponse.shipment_id) : "Pending AWB";
                 order.courierName = "Shiprocket";
                 console.log("🚀 Shiprocket Order Created! Shipment ID:", srResponse.shipment_id);
@@ -93,7 +90,7 @@ const updateOrderStatus = async (req, res, next) => {
     }
 };
 
-// SHIP ORDER (Aapke purane frontend buttons ke liye safety ke taur par chhod diya)
+// SHIP ORDER
 const shipOrder = async (req, res, next) => {
     return res.status(400).json({ 
         success: false, 
@@ -106,10 +103,20 @@ const shipOrder = async (req, res, next) => {
 // ==========================================
 const shiprocketWebhook = async (req, res) => {
     try {
+        // 👇 --- SECURITY CHECK ADDED HERE --- 👇
+        const incomingToken = req.headers['x-api-key'];
+        // Render .env se token uthayega, agar wahan nahi mila toh fallback AciAgroSecret123 use karega
+        const mySecretToken = process.env.SHIPROCKET_WEBHOOK_TOKEN || 'l7cMT9AEPIW#Fyi)RQ[^Ak';
+
+        if (incomingToken !== mySecretToken) {
+            console.error("🚨 Unauthorized Webhook Attempt! Wrong Token:", incomingToken);
+            return res.status(401).send("Unauthorized Access: Invalid Token");
+        }
+        // 👆 --------------------------------- 👆
+
         const webhookData = req.body;
         console.log("🔔 Webhook Received from Shiprocket. Status:", webhookData.current_status);
 
-        // Shiprocket bhejta hai shipment_id, jo humne trackingId me save ki thi
         const shipmentId = webhookData.shipment_id;
         const newStatus = webhookData.current_status; 
 
@@ -117,11 +124,9 @@ const shiprocketWebhook = async (req, res) => {
             return res.status(400).send("No shipment_id received in webhook");
         }
 
-        // Database me wo order dhoondho jiski trackingId match ho
         const order = await Order.findOne({ trackingId: String(shipmentId) });
 
         if (order) {
-            // Shiprocket ke real-time status ke hisaab se DB update karein
             if (newStatus === 'DELIVERED') {
                 order.orderStatus = 'delivered';
                 order.deliveredAt = new Date();
@@ -137,7 +142,6 @@ const shiprocketWebhook = async (req, res) => {
             console.log(`⚠️ Order with Tracking ID ${shipmentId} not found in DB.`);
         }
 
-        // Shiprocket ko turant 200 OK bhejna zaroori hai
         res.status(200).send("Webhook received successfully");
     } catch (error) {
         console.error("❌ Webhook Error:", error);

@@ -7,6 +7,7 @@ const {
     getOrderById,
     updateOrderStatus,
     shipOrder,
+    shiprocketWebhook // 👈 Fix 1: Webhook function import kiya
 } = require('../controllers/adminOrderController');
 
 // Import authentication middleware
@@ -16,6 +17,13 @@ const { checkAdminAccess } = require('../middlewares/checkAdminAccess');
 // Admin order routes
 const adminOnly = [protect, admin, checkAdminAccess];
 
+// ==========================================
+// 🔔 SHIPROCKET WEBHOOK ROUTE 
+// Dhyan de: Ispe 'adminOnly' middleware NAHI lagana hai!
+// ==========================================
+router.post('/webhook/tracking', shiprocketWebhook); // 👈 Fix 2: Route add kiya
+
+// Baaki saare admin routes
 router.route('/')
     .get(adminOnly, getOrders); // GET /api/admin/orders
 
