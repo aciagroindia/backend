@@ -105,7 +105,7 @@ const shiprocketWebhook = async (req, res) => {
     try {
         // 👇 --- SECURITY CHECK ADDED HERE --- 👇
         const incomingToken = req.headers['x-api-key'];
-        // Render .env se token uthayega, agar wahan nahi mila toh fallback AciAgroSecret123 use karega
+        // Render .env se token uthayega, agar wahan nahi mila toh fallback use karega
         const mySecretToken = process.env.SHIPROCKET_WEBHOOK_TOKEN || 'l7cMT9AEPIW#Fyi)RQ[^Ak';
 
         if (incomingToken !== mySecretToken) {
@@ -120,9 +120,12 @@ const shiprocketWebhook = async (req, res) => {
         const shipmentId = webhookData.shipment_id;
         const newStatus = webhookData.current_status; 
 
+        // 👇 --- SMART CHECK FOR SHIPROCKET TEST/SAVE --- 👇
         if (!shipmentId) {
-            return res.status(400).send("No shipment_id received in webhook");
+            console.log("⚠️ Dummy request received. Sending 200 OK to allow Shiprocket to save.");
+            return res.status(200).send("Webhook test successful");
         }
+        // 👆 -------------------------------------------- 👆
 
         const order = await Order.findOne({ trackingId: String(shipmentId) });
 
