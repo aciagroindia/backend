@@ -24,17 +24,16 @@ const createShiprocketOrder = async (orderData) => {
         const firstName = nameParts[0];
         const lastName = nameParts.slice(1).join(' ') || '.';
 
-        // 👇 PHONE NUMBER SANITIZER (Ye spaces, +, - sab hata dega aur 10 digit fix karega) 👇
+        // 👇 PHONE NUMBER SANITIZER
         let rawPhone = orderData.shippingInfo.phoneNo || orderData.shippingInfo.phone || orderData.shippingInfo.phoneNumber || "";
-        let cleanPhone = String(rawPhone).replace(/\D/g, ''); // Sirf numbers rakhega
+        let cleanPhone = String(rawPhone).replace(/\D/g, ''); 
 
         if (cleanPhone.length > 10) {
-            cleanPhone = cleanPhone.slice(-10); // Agar +91 laga hai (12 digit), toh aakhri ke 10 nikal lega
+            cleanPhone = cleanPhone.slice(-10); 
         }
         if (cleanPhone.length < 10) {
-            cleanPhone = "9876543210"; // Agar testing me 123 jaisa chota number dala hai, toh ye dummy number le lega
+            cleanPhone = "9876543210"; 
         }
-        // 👆 ---------------------------------------------------------------------- 👆
 
         const shiprocketPayload = {
             order_id: orderData._id.toString().slice(-10),
@@ -50,9 +49,7 @@ const createShiprocketOrder = async (orderData) => {
             billing_country: orderData.shippingInfo.country || "India",
             billing_email: orderData.customer.email || "customer@example.com",
             
-            // Yahan clean kiya hua number pass kar diya
             billing_phone: cleanPhone, 
-            
             shipping_is_billing: true, 
             
             order_items: orderData.orderItems.map(item => ({
@@ -80,12 +77,9 @@ const createShiprocketOrder = async (orderData) => {
 
         const response = await axios.post(`${SHIPROCKET_BASE_URL}/orders/create/adhoc`, shiprocketPayload, config);
         
-        // 👇 FAKE SUCCESS CATCHER ADD KAR DIYA GAYA HAI 👇
         if (response.data.message && !response.data.shipment_id) {
-            // Agar shipment_id nahi aayi, toh iska matlab fail ho gaya hai
             throw new Error(`Shiprocket rejected: ${response.data.message}`);
         }
-        // 👆 ------------------------------------------- 👆
 
         return response.data;
 
@@ -100,7 +94,7 @@ const createShiprocketOrder = async (orderData) => {
                 exactError = data.message;
             }
         } else if (error.message) {
-            exactError = error.message; // Humara throw kiya hua custom error yahan catch hoga
+            exactError = error.message; 
         }
         
         console.error("Shiprocket API Rejected:", exactError);
@@ -108,7 +102,33 @@ const createShiprocketOrder = async (orderData) => {
     }
 };
 
+// 👇 NAYA FUNCTION: CANCEL ORDER KE LIYE 👇
+const cancelShiprocketOrder = async (shiprocketOrderId) => {
+    try {
+        const token = await getShiprocketToken();
+        const config = {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        };
+        
+        // Shiprocket cancel API ko hamesha ek Array chahiye hota hai
+        const payload = {
+            ids: [shiprocketOrderId] 
+        };
+
+        const response = await axios.post(`${SHIPROCKET_BASE_URL}/orders/cancel`, payload, config);
+        return response.data;
+
+    } catch (error) {
+        console.error("Shiprocket Cancel Error:", error.response?.data || error.message);
+        throw new Error("Failed to cancel order on Shiprocket.");
+    }
+};
+
 module.exports = {
     getShiprocketToken,
-    createShiprocketOrder
+    createShiprocketOrder,
+    cancelShiprocketOrder // 👈 Isko export karna mat bhoolna
 };

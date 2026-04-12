@@ -1,5 +1,5 @@
 const Order = require('../models/Order');
-const { createShiprocketOrder } = require('../services/shiprocket.service');
+const { createShiprocketOrder, cancelShiprocketOrder } = require('../services/shiprocket.service'); // 👈 Import kiya
 
 // GET ALL ORDERS (Strictly Filtered for Admin)
 const getOrders = async (req, res, next) => {
@@ -34,7 +34,7 @@ const getOrderById = async (req, res, next) => {
     }
 };
 
-// UPDATE STATUS (Ab Dropdown se hi Shiprocket chalega!)
+// UPDATE STATUS FUNCTION
 const updateOrderStatus = async (req, res, next) => {
     try {
         const { status } = req.body;
@@ -52,13 +52,14 @@ const updateOrderStatus = async (req, res, next) => {
             });
         }
 
-        // --- SHIPROCKET MAGIC START ---
+        // --- SHIPROCKET CREATE MAGIC START ---
         if (status === 'shipped' && order.orderStatus !== 'shipped') {
             try {
                 const srResponse = await createShiprocketOrder(order);
                 console.log("📦 SHIPROCKET FULL RESPONSE:", JSON.stringify(srResponse, null, 2));
                 
                 order.trackingId = srResponse.shipment_id ? String(srResponse.shipment_id) : "Pending AWB";
+                order.shiprocketOrderId = srResponse.order_id ? String(srResponse.order_id) : null; // 👈 NAYI LINE: Order ID bhi save karni hogi
                 order.courierName = "Shiprocket";
                 console.log("🚀 Shiprocket Order Created! Shipment ID:", srResponse.shipment_id);
 
@@ -70,7 +71,27 @@ const updateOrderStatus = async (req, res, next) => {
                 });
             }
         }
-        // --- SHIPROCKET MAGIC END ---
+        // --- SHIPROCKET CREATE MAGIC END ---
+
+        // 👇 --- NAYA: SHIPROCKET CANCEL MAGIC START --- 👇
+        if (status === 'cancelled' && order.orderStatus !== 'cancelled') {
+            // Agar Shiprocket me order ban chuka tha, tabhi cancel bhejo
+            if (order.shiprocketOrderId) {
+                try {
+                    await cancelShiprocketOrder(order.shiprocketOrderId);
+                    console.log(`🚀 Shiprocket Order Cancelled Successfully! SR Order ID: ${order.shiprocketOrderId}`);
+                } catch (srCancelError) {
+                    console.error("❌ Shiprocket Cancel Failed:", srCancelError.message);
+                    return res.status(500).json({ 
+                        success: false, 
+                        message: "Order cancel failed on Shiprocket! " + srCancelError.message 
+                    });
+                }
+            } else if (order.trackingId && order.trackingId !== "Pending AWB") {
+                console.log("⚠️ Note: Purane test order me Shiprocket Order ID nahi mili, isliye manually cancel karna padega.");
+            }
+        }
+        // 👆 --- SHIPROCKET CANCEL MAGIC END --- 👆
 
         order.orderStatus = status;
         if (status === 'delivered') order.deliveredAt = new Date();

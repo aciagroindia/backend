@@ -64,6 +64,9 @@ const orderSchema = new mongoose.Schema({
     trackingId: {
         type: String,
     },
+    shiprocketOrderId: { // 👈 Ye naya add karna hai
+        type: String,
+    },
     courierName: {
         type: String,
     },
