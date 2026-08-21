@@ -6,6 +6,8 @@ const {
     createCoupon,
     updateCoupon,
     deleteCoupon,
+    applyCoupon,
+    getAvailableCoupons,
 } = require("../controllers/couponController");
 
 const { protect, admin } = require("../middlewares/authMiddleware");
@@ -14,12 +16,18 @@ const { validate } = require("../middlewares/validationMiddleware");
 const {
     couponSchema,
     updateCouponSchema,
+    applyCouponSchema,
 } = require("../validations/coupon.validation");
 
 const { objectIdParamSchema } = require("../validations/discount.validation");
 
 const adminOnly = [protect, admin, checkAdminAccess];
 
+// Customer routes
+router.get("/available", protect, getAvailableCoupons);
+router.post("/apply", protect, validate(applyCouponSchema), applyCoupon);
+
+// Admin routes
 router.route("/")
     .get(adminOnly, getCoupons)
     .post(adminOnly, validate(couponSchema), createCoupon);

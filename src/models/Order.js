@@ -38,6 +38,24 @@ const orderSchema = new mongoose.Schema({
         required: true,
     },
     deliveredAt: { type: Date },
+    subtotal: {
+        type: Number,
+    },
+    discountAmount: {
+        type: Number,
+        default: 0,
+    },
+    appliedDiscount: {
+        discountId: { type: mongoose.Schema.Types.ObjectId, ref: 'Discount' },
+        name: String,
+        type: { type: String },
+        value: Number,
+    },
+    coupon: {
+        couponId: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' },
+        code: String,
+        discountAmount: { type: Number, default: 0 },
+    },
     totalAmount: {
         type: Number,
         required: true,
@@ -50,11 +68,18 @@ const orderSchema = new mongoose.Schema({
     paymentMethod: {
         type: String,
         required: true,
-        default: 'Razorpay' // ya 'COD'
+        default: 'PayU' // 'PayU', 'Razorpay', ya 'COD'
     },
+    // Historical Razorpay fields (Preserved for backward compatibility)
     razorpay_order_id: { type: String },
     razorpay_payment_id: { type: String },
     razorpay_signature: { type: String },
+    // PayU Payment fields
+    payu_txnid: { type: String },
+    payu_mihpayid: { type: String },
+    payu_mode: { type: String },
+    payu_status: { type: String },
+    payu_response: { type: mongoose.Schema.Types.Mixed },
     orderStatus: {
         type: String,
         required: true,

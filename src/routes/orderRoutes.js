@@ -3,7 +3,11 @@ const router = express.Router();
 
 const {
   createOrder,
+  previewOrderDiscount,
   verifyPayment, 
+  handlePayUResponse,
+  verifyPayUResponseJSON,
+  retryPayUPayment,
   getMyOrders,
   getOrderById,
   cancelMyOrder
@@ -24,9 +28,26 @@ const {
 // ==========================================
 router.post("/webhook/shiprocket", shiprocketWebhook);
 
+// ==========================================
+// 💳 PAYU CALLBACK / RESPONSE ROUTES
+// Direct browser POST redirects from PayU gateway
+// ==========================================
+router.post("/payu-response", handlePayUResponse);
+router.post("/payu-callback", handlePayUResponse);
+router.post("/payu-success", handlePayUResponse);
+router.post("/payu-failure", handlePayUResponse);
+router.post("/payu-verify", verifyPayUResponseJSON);
+
+// preview automatic discount
+router.post("/preview-discount", protect, previewOrderDiscount);
+
 // create order
 router.post("/", protect, validate(createOrderSchema), createOrder);
 
+// Retry PayU payment for pending order
+router.post("/:id/payu-retry", protect, retryPayUPayment);
+
+// Legacy Razorpay verify payment
 router.post("/pay", protect, verifyPayment);
 
 // user orders

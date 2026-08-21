@@ -20,7 +20,7 @@ const createOrderSchema = Joi.object({
   items: Joi.array().items(orderItemSchema).min(1).required(),
   shippingAddress: shippingAddressSchema.required(),
   clearCart: Joi.boolean().optional(),
-  paymentMethod: Joi.string().valid('Razorpay', 'COD').optional(), // Naya field allow kiya
+  paymentMethod: Joi.string().valid('PayU', 'Razorpay', 'COD').optional(),
 }).unknown(true);
 
 // FAKE HATA KAR REAL VERIFY SCHEMA BANAYA

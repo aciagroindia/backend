@@ -53,6 +53,7 @@ const morgan = require('morgan');
 // Standard Middlewares
 app.use(morgan('dev'));
 app.use(express.json()); // Allows us to parse JSON in requests
+app.use(express.urlencoded({ extended: true })); // Allows parsing of URL-encoded form submissions (e.g. PayU callbacks)
 
 // Optimized CORS configuration for frontend
 const corsOptions = {
@@ -80,6 +81,8 @@ app.use("/api/recently-viewed", recentlyViewedRoutes);
 app.use("/api/inquiries", inquiryRoutes);
 app.use("/api/certificates", certificateRoutes);
 app.use("/api/about-media", aboutMediaRoutes);
+app.use("/api/coupons", couponRoutes);
+app.use("/api/discounts", discountRoutes);
 
 // --- Admin Routes ---
 // Note: More specific routes must be declared before less specific ones.
