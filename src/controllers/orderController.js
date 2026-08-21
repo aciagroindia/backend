@@ -16,10 +16,20 @@ const {
 } = require("../services/discountCalculation.service");
 const couponService = require("../services/coupon.service");
 
-const razorpay = new Razorpay({
-  key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'dummy_rzp_key',
-  key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_rzp_secret',
-});
+let razorpay = null;
+const rzpKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID;
+const rzpKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+if (rzpKeyId && rzpKeySecret) {
+  try {
+    razorpay = new Razorpay({
+      key_id: rzpKeyId,
+      key_secret: rzpKeySecret,
+    });
+  } catch (e) {
+    console.warn("Legacy Razorpay initialization skipped:", e.message);
+  }
+}
 
 // ==========================================
 // PREVIEW AUTOMATIC DISCOUNT & COUPON
@@ -248,8 +258,11 @@ exports.createOrder = async (req, res, next) => {
 
     // 4. LEGACY RAZORPAY COMPATIBILITY (Agar user explicitly Razorpay use kar raha ho)
     if (selectedMethod === 'Razorpay') {
+      if (!razorpay) {
+        throw createError(400, "Razorpay is not configured on this server. Please use PayU or COD.");
+      }
       const options = {
-        amount: Math.round(serverCalculatedTotal * 100),
+        amount: Math.round(finalPayableTotal * 100),
         currency: "INR",
         receipt: `rcpt_${Date.now()}`
       };
