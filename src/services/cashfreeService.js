@@ -35,8 +35,21 @@ const getCashfreeConfig = () => {
     ? 'https://api.cashfree.com/pg'
     : 'https://sandbox.cashfree.com/pg';
 
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const backendBaseUrl = process.env.BASE_URL || 'http://localhost:5000';
+  let frontendUrl = (process.env.FRONTEND_URL || '').trim();
+  let backendBaseUrl = (process.env.BASE_URL || '').trim();
+
+  // In Production mode, Cashfree strictly enforces valid HTTPS URLs
+  if (isProd) {
+    if (!frontendUrl || frontendUrl.includes('localhost') || !frontendUrl.startsWith('https://')) {
+      frontendUrl = 'https://aciagro.com';
+    }
+    if (!backendBaseUrl || backendBaseUrl.includes('localhost') || !backendBaseUrl.startsWith('https://')) {
+      backendBaseUrl = 'https://api.aciagro.com';
+    }
+  } else {
+    if (!frontendUrl) frontendUrl = 'http://localhost:3000';
+    if (!backendBaseUrl) backendBaseUrl = 'http://localhost:5000';
+  }
 
   if (!appId || !secretKey) {
     console.warn('⚠️ [Cashfree Config Warning] CASHFREE_APP_ID or CASHFREE_SECRET_KEY is missing in .env!');
@@ -71,8 +84,16 @@ const createCashfreeOrder = async ({ order, user, isBuyNow = false }) => {
   const customerPhone = rawPhone.slice(-10) || '9999999999';
   const customerId = (user?._id || user?.id || order.customer || 'cust_' + Date.now()).toString();
 
-  const returnUrl = `${config.frontendUrl}/orders?order_id={order_id}&order_status={order_status}`;
-  const notifyUrl = `${config.backendBaseUrl}/api/orders/cashfree-webhook`;
+  const returnUrl = `${config.frontendUrl.replace(/\/$/, '')}/orders?order_id={order_id}&order_status={order_status}`;
+
+  const orderMeta = {
+    return_url: returnUrl,
+  };
+
+  // Only pass notify_url if it's a valid HTTPS URL (or sandbox HTTP)
+  if (config.backendBaseUrl && (config.backendBaseUrl.startsWith('https://') || !config.environment.includes('PROD'))) {
+    orderMeta.notify_url = `${config.backendBaseUrl.replace(/\/$/, '')}/api/orders/cashfree-webhook`;
+  }
 
   const payload = {
     order_id: cfOrderId,
@@ -84,10 +105,7 @@ const createCashfreeOrder = async ({ order, user, isBuyNow = false }) => {
       customer_email: customerEmail,
       customer_phone: customerPhone,
     },
-    order_meta: {
-      return_url: returnUrl,
-      notify_url: notifyUrl,
-    },
+    order_meta: orderMeta,
     order_note: `ACI Agro Order #${order._id.toString().slice(-6)}`,
     order_tags: {
       mongo_order_id: order._id.toString(),
