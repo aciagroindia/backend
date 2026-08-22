@@ -5,6 +5,9 @@ const {
   createOrder,
   previewOrderDiscount,
   verifyPayment, 
+  handleCashfreeWebhook,
+  verifyCashfreeOrder,
+  retryCashfreePayment,
   handlePayUResponse,
   verifyPayUResponseJSON,
   retryPayUPayment,
@@ -23,14 +26,21 @@ const {
 } = require("../validations/order.validation");
 
 // ==========================================
-// 🔔 SHIPROCKET WEBHOOK ROUTE
-// Dhyan de: Ispe protect middleware nahi laga hai
+// 🔔 SHIPROCKET & CASHFREE WEBHOOK ROUTES
+// Dhyan de: Webhook routes par protect middleware nahi lagta
 // ==========================================
 router.post("/webhook/shiprocket", shiprocketWebhook);
+router.post("/cashfree-webhook", handleCashfreeWebhook);
+router.post("/webhook/cashfree", handleCashfreeWebhook);
 
 // ==========================================
-// 💳 PAYU CALLBACK / RESPONSE ROUTES
-// Direct browser POST redirects from PayU gateway
+// 💳 CASHFREE VERIFICATION & RETRY ROUTES
+// ==========================================
+router.post("/cashfree-verify", verifyCashfreeOrder);
+router.post("/:id/cashfree-retry", protect, retryCashfreePayment);
+
+// ==========================================
+// 💳 PAYU CALLBACK / RESPONSE ROUTES (Backward compatibility)
 // ==========================================
 router.post("/payu-response", handlePayUResponse);
 router.post("/payu-callback", handlePayUResponse);

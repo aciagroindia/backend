@@ -68,18 +68,24 @@ const orderSchema = new mongoose.Schema({
     paymentMethod: {
         type: String,
         required: true,
-        default: 'PayU' // 'PayU', 'Razorpay', ya 'COD'
+        default: 'Cashfree' // 'Cashfree', 'PayU', 'Razorpay', ya 'COD'
     },
-    // Historical Razorpay fields (Preserved for backward compatibility)
-    razorpay_order_id: { type: String },
-    razorpay_payment_id: { type: String },
-    razorpay_signature: { type: String },
-    // PayU Payment fields
+    // Cashfree Payment fields
+    cashfree_order_id: { type: String },
+    cashfree_payment_session_id: { type: String },
+    cashfree_payment_id: { type: String },
+    cashfree_status: { type: String },
+    cashfree_response: { type: mongoose.Schema.Types.Mixed },
+    // Historical PayU Payment fields (Preserved for backward compatibility)
     payu_txnid: { type: String },
     payu_mihpayid: { type: String },
     payu_mode: { type: String },
     payu_status: { type: String },
     payu_response: { type: mongoose.Schema.Types.Mixed },
+    // Historical Razorpay fields (Preserved for backward compatibility)
+    razorpay_order_id: { type: String },
+    razorpay_payment_id: { type: String },
+    razorpay_signature: { type: String },
     orderStatus: {
         type: String,
         required: true,

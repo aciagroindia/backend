@@ -12,6 +12,11 @@ const {
   getPayUConfig,
 } = require("../services/payuService");
 const {
+  createCashfreeOrder,
+  verifyCashfreePayment,
+  verifyWebhookSignature,
+} = require("../services/cashfreeService");
+const {
   calculateBestAutomaticDiscount,
 } = require("../services/discountCalculation.service");
 const couponService = require("../services/coupon.service");
@@ -189,7 +194,7 @@ exports.createOrder = async (req, res, next) => {
       Math.round((serverCalculatedTotal - discountResult.discountAmount - couponDiscount) * 100) / 100
     );
 
-    const selectedMethod = paymentMethod || 'PayU';
+    const selectedMethod = paymentMethod || 'Cashfree';
 
     // 1. MONGODB ME ORDER CREATE KARNA
     const order = await Order.create({
@@ -237,7 +242,37 @@ exports.createOrder = async (req, res, next) => {
       });
     }
 
-    // 3. AGAR PAYU HAI, TOH PAYU PAYMENT PAYLOAD GENERATE KAREIN
+    // 3. AGAR CASHFREE HAI (Primary Online Gateway)
+    if (selectedMethod === 'Cashfree') {
+      try {
+        const cfResult = await createCashfreeOrder({
+          order,
+          user: req.user,
+          isBuyNow: Boolean(isBuyNow),
+        });
+
+        order.cashfree_order_id = cfResult.order_id;
+        order.cashfree_payment_session_id = cfResult.payment_session_id;
+        order.cashfree_status = cfResult.order_status;
+        await order.save();
+
+        return res.status(201).json({
+          success: true,
+          data: order,
+          cashfree: {
+            payment_session_id: cfResult.payment_session_id,
+            cf_order_id: cfResult.cf_order_id,
+            order_id: cfResult.order_id,
+            environment: cfResult.environment,
+          },
+        });
+      } catch (cfErr) {
+        console.error('[Cashfree Order Generation Error]:', cfErr.message);
+        throw createError(500, `Failed to initialize Cashfree payment: ${cfErr.message}`);
+      }
+    }
+
+    // 4. LEGACY PAYU COMPATIBILITY (Agar explicitly PayU select ho)
     if (selectedMethod === 'PayU') {
       const payuPayload = buildPaymentPayload({
         order,
@@ -735,6 +770,280 @@ exports.cancelMyOrder = async (req, res, next) => {
     await order.save();
 
     res.json({ success: true, message: "Order cancelled successfully." });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
+// CASHFREE WEBHOOK HANDLER
+// ==========================================
+exports.handleCashfreeWebhook = async (req, res, next) => {
+  try {
+    const signature = req.headers['x-webhook-signature'];
+    const timestamp = req.headers['x-webhook-timestamp'];
+    const rawBody = req.body;
+
+    console.log(`[Cashfree Webhook] Received notification at timestamp: ${timestamp}`);
+
+    // 1. Verify Signature
+    const isSignatureValid = verifyWebhookSignature(signature, rawBody, timestamp);
+    if (!isSignatureValid) {
+      console.warn('[Cashfree Webhook Alert] Signature verification failed or missing secret key.');
+    }
+
+    const eventType = rawBody.type;
+    const eventData = rawBody.data || {};
+    const orderData = eventData.order || {};
+    const paymentData = eventData.payment || {};
+
+    const cfOrderId = orderData.order_id || eventData.order_id;
+    const mongoOrderId = orderData.order_tags?.mongo_order_id;
+    const isBuyNow = orderData.order_tags?.is_buy_now;
+    const paymentStatus = paymentData.payment_status || orderData.order_status;
+
+    console.log(`[Cashfree Webhook] Event: ${eventType}, OrderID: ${cfOrderId}, PaymentStatus: ${paymentStatus}`);
+
+    // 2. Find Order
+    const order = await Order.findOne({
+      $or: [
+        { cashfree_order_id: cfOrderId },
+        ...(mongoOrderId ? [{ _id: mongoOrderId }] : []),
+      ],
+    });
+
+    if (!order) {
+      console.error(`[Cashfree Webhook] Order not found for cfOrderId: ${cfOrderId}`);
+      return res.status(200).json({ status: "acknowledged", message: "Order not found" });
+    }
+
+    // 3. Idempotency Check
+    if (order.paymentStatus === 'paid') {
+      console.log(`[Cashfree Webhook Idempotency] Order #${order._id} already marked as paid.`);
+      return res.status(200).json({ status: "acknowledged", message: "Already processed" });
+    }
+
+    // 4. Process Successful Payment
+    if (eventType === 'PAYMENT_SUCCESS_WEBHOOK' || paymentStatus === 'SUCCESS' || paymentStatus === 'PAID') {
+      // Amount verification
+      const paidAmount = Number(paymentData.payment_amount || orderData.order_amount || 0);
+      const expectedAmount = Number(order.totalAmount);
+
+      if (paidAmount > 0 && Math.abs(paidAmount - expectedAmount) > 0.5) {
+        console.error(`[Cashfree Security Alert] Webhook amount mismatch for Order #${order._id}: expected ₹${expectedAmount}, received ₹${paidAmount}`);
+        order.paymentStatus = 'failed';
+        order.cashfree_status = 'amount_mismatch_failed';
+        order.cashfree_response = rawBody;
+        await order.save();
+        return res.status(200).json({ status: "acknowledged", message: "Amount mismatch" });
+      }
+
+      order.paymentStatus = 'paid';
+      order.orderStatus = 'processing';
+      order.cashfree_status = 'PAID';
+      order.cashfree_payment_id = paymentData.cf_payment_id ? String(paymentData.cf_payment_id) : undefined;
+      order.cashfree_response = rawBody;
+      await order.save();
+
+      // Product stock deduct & sales counter update
+      const bulkStockUpdate = order.orderItems.map(item => ({
+        updateOne: {
+          filter: { _id: item.product },
+          update: { $inc: { stock: -item.quantity, numSales: item.quantity, salesCount: item.quantity } }
+        }
+      }));
+      await Product.bulkWrite(bulkStockUpdate);
+
+      // Notification
+      await Notification.create({
+        type: "order",
+        text: `New Prepaid order received #${order._id.toString().slice(-4)}`,
+        link: "/admin/orders"
+      });
+
+      // Clear user cart if not buy now
+      if (isBuyNow !== 'true') {
+        await Cart.updateOne({ user: order.customer }, { $set: { items: [] } });
+      }
+
+      // Record coupon usage if applied
+      if (order.coupon && order.coupon.couponId) {
+        await couponService.recordCouponUsage(order.coupon.couponId, order.customer);
+      }
+
+      console.log(`[Cashfree Webhook Success] Order #${order._id} confirmed and marked as PAID.`);
+    } else if (eventType === 'PAYMENT_FAILED_WEBHOOK' || paymentStatus === 'FAILED') {
+      order.paymentStatus = 'failed';
+      order.cashfree_status = 'FAILED';
+      order.cashfree_response = rawBody;
+      await order.save();
+      console.log(`[Cashfree Webhook Failure] Order #${order._id} payment failed.`);
+    }
+
+    return res.status(200).json({ status: "acknowledged" });
+  } catch (error) {
+    console.error("[Cashfree Webhook Exception]:", error);
+    return res.status(200).json({ status: "error", message: error.message });
+  }
+};
+
+// ==========================================
+// VERIFY CASHFREE ORDER (S2S from Frontend return)
+// ==========================================
+exports.verifyCashfreeOrder = async (req, res, next) => {
+  try {
+    const { orderId, cfOrderId } = req.body;
+    const searchId = cfOrderId || orderId;
+
+    if (!searchId) {
+      return res.status(400).json({ success: false, message: "Order ID is required for verification." });
+    }
+
+    const isValidObjectId = typeof searchId === 'string' && searchId.match(/^[0-9a-fA-F]{24}$/);
+    const order = await Order.findOne({
+      $or: [
+        { cashfree_order_id: searchId },
+        ...(isValidObjectId ? [{ _id: searchId }] : []),
+      ],
+    });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    if (order.paymentStatus === 'paid') {
+      return res.json({ success: true, message: "Order already verified and paid", data: { order } });
+    }
+
+    // Call Cashfree S2S API
+    const cfLookupId = order.cashfree_order_id || searchId;
+    const cfVerifyResult = await verifyCashfreePayment(cfLookupId);
+
+    if (cfVerifyResult.success && cfVerifyResult.isPaid) {
+      // Amount verification
+      const paidAmount = Number(cfVerifyResult.orderAmount || 0);
+      const expectedAmount = Number(order.totalAmount);
+
+      if (paidAmount > 0 && Math.abs(paidAmount - expectedAmount) > 0.5) {
+        console.error(`[Cashfree Security Alert] S2S Amount mismatch for Order #${order._id}: expected ₹${expectedAmount}, received ₹${paidAmount}`);
+        order.paymentStatus = 'failed';
+        order.cashfree_status = 'amount_mismatch_failed';
+        order.cashfree_response = cfVerifyResult.data;
+        await order.save();
+        return res.status(400).json({ success: false, message: "Payment amount mismatch detected!" });
+      }
+
+      order.paymentStatus = 'paid';
+      order.orderStatus = 'processing';
+      order.cashfree_status = 'PAID';
+      order.cashfree_response = cfVerifyResult.data;
+      await order.save();
+
+      // Product stock deduct & sales counter update
+      const bulkStockUpdate = order.orderItems.map(item => ({
+        updateOne: {
+          filter: { _id: item.product },
+          update: { $inc: { stock: -item.quantity, numSales: item.quantity, salesCount: item.quantity } }
+        }
+      }));
+      await Product.bulkWrite(bulkStockUpdate);
+
+      // Notification
+      await Notification.create({
+        type: "order",
+        text: `New Prepaid order received #${order._id.toString().slice(-4)}`,
+        link: "/admin/orders"
+      });
+
+      // Clear user cart if not buy now
+      const isBuyNow = cfVerifyResult.orderTags?.is_buy_now === 'true';
+      if (!isBuyNow) {
+        await Cart.updateOne({ user: order.customer }, { $set: { items: [] } });
+      }
+
+      // Record coupon usage if applied
+      if (order.coupon && order.coupon.couponId) {
+        await couponService.recordCouponUsage(order.coupon.couponId, order.customer);
+      }
+
+      return res.json({ success: true, message: "Payment verified successfully", data: { order } });
+    }
+
+    return res.json({
+      success: false,
+      message: cfVerifyResult.message || `Payment status is ${cfVerifyResult.orderStatus || 'pending'}`,
+      data: { order, status: cfVerifyResult.orderStatus },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
+// RETRY CASHFREE PAYMENT (For Pending Orders)
+// ==========================================
+exports.retryCashfreePayment = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    if (order.customer.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Not authorized to access this order" });
+    }
+
+    if (order.paymentStatus === 'paid') {
+      return res.status(400).json({ success: false, message: "Order is already paid" });
+    }
+
+    if (order.paymentMethod === 'COD') {
+      return res.status(400).json({ success: false, message: "Cash on Delivery orders cannot be paid online" });
+    }
+
+    if (order.orderStatus === 'cancelled') {
+      return res.status(400).json({ success: false, message: "This order has been cancelled and cannot be paid." });
+    }
+
+    // Check stock availability before initiating payment
+    const productIds = order.orderItems.map(item => item.product);
+    const currentProducts = await Product.find({ _id: { $in: productIds } });
+    const productMap = new Map(currentProducts.map(p => [p._id.toString(), p]));
+
+    for (const item of order.orderItems) {
+      const p = productMap.get(item.product.toString());
+      if (!p) {
+        return res.status(400).json({ success: false, message: `Product ${item.name} is no longer available.` });
+      }
+      if (p.stock < item.quantity) {
+        return res.status(400).json({ success: false, message: `Insufficient stock for ${item.name}. Only ${p.stock} remaining.` });
+      }
+    }
+
+    // Generate new Cashfree order session
+    const cfResult = await createCashfreeOrder({
+      order,
+      user: req.user,
+      isBuyNow: false,
+    });
+
+    order.cashfree_order_id = cfResult.order_id;
+    order.cashfree_payment_session_id = cfResult.payment_session_id;
+    order.cashfree_status = cfResult.order_status;
+    order.paymentMethod = 'Cashfree';
+    await order.save();
+
+    res.json({
+      success: true,
+      cashfree: {
+        payment_session_id: cfResult.payment_session_id,
+        cf_order_id: cfResult.cf_order_id,
+        order_id: cfResult.order_id,
+        environment: cfResult.environment,
+      },
+      order,
+    });
   } catch (error) {
     next(error);
   }
