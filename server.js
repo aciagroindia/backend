@@ -34,6 +34,7 @@ const aboutMediaRoutes = require("./src/routes/aboutMediaRoutes");
 const adminUserRoutes = require("./src/routes/adminUserRoutes");
 const notificationRoutes = require("./src/routes/notificationRoutes");
 const bulkBannerRoutes = require("./src/routes/bulkBannerRoutes");
+const articleRoutes = require("./src/routes/articleRoutes");
 
 // Load environment variables
 dotenv.config();
@@ -78,6 +79,7 @@ app.use("/api/certificates", certificateRoutes);
 app.use("/api/about-media", aboutMediaRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/discounts", discountRoutes);
+app.use("/api/articles", articleRoutes);
 
 // --- Admin Routes ---
 // Note: More specific routes must be declared before less specific ones.
@@ -90,6 +92,7 @@ app.use("/api/admin/dashboard", dashboardRoutes); // Corrected from /api/dashboa
 app.use("/api/admin/discounts", discountRoutes);
 app.use("/api/admin/coupons", couponRoutes);
 app.use("/api/admin/bulk-banners", bulkBannerRoutes);
+app.use("/api/admin/articles", articleRoutes);
 app.use("/api/admin/inquiries", adminInquiryRoutes); // Mount new admin inquiry routes
 app.use("/api/admin/notifications", notificationRoutes);
 app.use("/api/admin", adminRequestRoutes); // This should be last for /api/admin

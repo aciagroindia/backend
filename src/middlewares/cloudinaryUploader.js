@@ -26,6 +26,8 @@ const uploadToCloudinary = (req, res, next) => {
         folder = 'certificates';
     } else if (req.originalUrl.includes('/api/about-media')) {
         folder = 'about-media';
+    } else if (req.originalUrl.includes('/api/articles')) {
+        folder = 'articles';
     } else {
         folder = 'misc'; // A fallback folder
     }
