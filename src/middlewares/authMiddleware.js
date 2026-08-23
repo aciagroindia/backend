@@ -45,15 +45,23 @@ const optionalProtect = async (req, res, next) => {
 };
 
 const admin = (req, res, next) => {
-    // Admin aur Owner dono ko access dena chahiye
-    if (req.user && (req.user.role === 'admin' || req.user.role === 'owner')) {
-        next();
-    } else {
-        return res.status(403).json({ 
+    if (!req.user) {
+        return res.status(401).json({ 
             success: false, 
-            message: "Not authorized as an admin. Access denied." 
+            message: 'Not authorized, user not found' 
         });
     }
+
+    const role = (req.user.role || '').toLowerCase();
+    // Admin, Owner, aur Approved Admin sabhi ko access milna chahiye
+    if (role === 'admin' || role === 'owner' || req.user.isAdminApproved) {
+        return next();
+    }
+
+    return res.status(403).json({ 
+        success: false, 
+        message: "Not authorized as an admin. Access denied." 
+    });
 };
 
 // ✅ Dono ko EK SAATH export karein

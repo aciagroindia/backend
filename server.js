@@ -33,13 +33,7 @@ const certificateRoutes = require("./src/routes/certificateRoutes");
 const aboutMediaRoutes = require("./src/routes/aboutMediaRoutes");
 const adminUserRoutes = require("./src/routes/adminUserRoutes");
 const notificationRoutes = require("./src/routes/notificationRoutes");
-
-
-
-
-
-
-
+const bulkBannerRoutes = require("./src/routes/bulkBannerRoutes");
 
 // Load environment variables
 dotenv.config();
@@ -70,6 +64,7 @@ app.use(helmet());       // Adds security headers to protect your app
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/banners', bannerRoutes);
+app.use('/api/bulk-banners', bulkBannerRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
 app.use("/api/wishlist", wishlistRoutes);
@@ -94,6 +89,7 @@ app.use("/api/admin/analytics", analyticsRoutes);
 app.use("/api/admin/dashboard", dashboardRoutes); // Corrected from /api/dashboard
 app.use("/api/admin/discounts", discountRoutes);
 app.use("/api/admin/coupons", couponRoutes);
+app.use("/api/admin/bulk-banners", bulkBannerRoutes);
 app.use("/api/admin/inquiries", adminInquiryRoutes); // Mount new admin inquiry routes
 app.use("/api/admin/notifications", notificationRoutes);
 app.use("/api/admin", adminRequestRoutes); // This should be last for /api/admin

@@ -22,9 +22,7 @@ router.get(
 
 router.get(
   "/recent-orders",
-  // Temporarily replacing adminOnly with [protect, admin] to debug checkAdminAccess.
-  // If this fixes the 500 error, the issue is within the checkAdminAccess middleware itself.
-  [protect, admin], 
+  adminOnly, 
   dashboardController.getRecentOrders
 );
 
