@@ -28,6 +28,8 @@ const uploadToCloudinary = (req, res, next) => {
         folder = 'about-media';
     } else if (req.originalUrl.includes('/api/articles')) {
         folder = 'articles';
+    } else if (req.originalUrl.includes('/api/why-choose-us')) {
+        folder = 'why-choose-us';
     } else {
         folder = 'misc'; // A fallback folder
     }
