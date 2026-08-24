@@ -38,6 +38,7 @@ const articleRoutes = require("./src/routes/articleRoutes");
 const policyRoutes = require("./src/routes/policyRoutes");
 const whatsAppRoutes = require("./src/routes/whatsAppRoutes");
 const whyChooseUsRoutes = require("./src/routes/whyChooseUsRoutes");
+const aboutPageRoutes = require("./src/routes/aboutPageRoutes");
 
 // Load environment variables
 dotenv.config();
@@ -86,6 +87,7 @@ app.use("/api/articles", articleRoutes);
 app.use("/api/policies", policyRoutes);
 app.use("/api/config", whatsAppRoutes);
 app.use("/api/why-choose-us", whyChooseUsRoutes);
+app.use("/api/about-page", aboutPageRoutes);
 
 // --- Admin Routes ---
 // Note: More specific routes must be declared before less specific ones.
@@ -102,6 +104,7 @@ app.use("/api/admin/articles", articleRoutes);
 app.use("/api/admin/policies", policyRoutes);
 app.use("/api/admin/config", whatsAppRoutes);
 app.use("/api/admin/why-choose-us", whyChooseUsRoutes);
+app.use("/api/admin/about-page", aboutPageRoutes);
 app.use("/api/admin/inquiries", adminInquiryRoutes); // Mount new admin inquiry routes
 app.use("/api/admin/notifications", notificationRoutes);
 app.use("/api/admin", adminRequestRoutes); // This should be last for /api/admin

@@ -30,34 +30,54 @@ const uploadToCloudinary = (req, res, next) => {
         folder = 'articles';
     } else if (req.originalUrl.includes('/api/why-choose-us')) {
         folder = 'why-choose-us';
+    } else if (req.originalUrl.includes('/api/about-page') || req.originalUrl.includes('/api/admin/about-page')) {
+        folder = 'about-page';
     } else {
         folder = 'misc'; // A fallback folder
     }
 
-    const public_id = `${folder.slice(0, 4)}-${Date.now()}`;
+    const uploadSingleBuffer = (fileObj) => {
+        return new Promise((resolve, reject) => {
+            const public_id = `${folder.slice(0, 4)}-${Date.now()}-${Math.round(Math.random() * 1E6)}`;
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder: folder,
+                    public_id: public_id,
+                    resource_type: 'auto',
+                },
+                (error, result) => {
+                    if (error) {
+                        console.error('Cloudinary Upload Error:', error);
+                        return reject(createError(500, 'Image could not be uploaded.'));
+                    }
+                    fileObj.path = result.secure_url;
+                    fileObj.filename = result.public_id;
+                    resolve(result);
+                }
+            );
+            streamifier.createReadStream(fileObj.buffer).pipe(uploadStream);
+        });
+    };
 
-    const uploadStream = cloudinary.uploader.upload_stream(
-        {
-            folder: folder,
-            public_id: public_id,
-            resource_type: 'auto', // Support video and image
-            // Apply transformations only for images if necessary, or omit for auto
-        },
-        (error, result) => {
-            if (error) {
-                console.error('Cloudinary Upload Error:', error);
-                // Pass a generic error to the client to avoid leaking implementation details
-                return next(createError(500, 'Image could not be uploaded.'));
-            }
-            // Attach Cloudinary URL and public ID to the file object
-            req.file.path = result.secure_url;
-            req.file.filename = result.public_id;
-            next();
+    if (req.file) {
+        uploadSingleBuffer(req.file)
+            .then(() => next())
+            .catch(next);
+    } else if (req.files) {
+        const filesToUpload = Array.isArray(req.files) 
+            ? req.files 
+            : Object.values(req.files).flat();
+
+        if (filesToUpload.length === 0) {
+            return next();
         }
-    );
 
-    // Use streamifier to create a readable stream from the buffer and pipe it to Cloudinary
-    streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+        Promise.all(filesToUpload.map(uploadSingleBuffer))
+            .then(() => next())
+            .catch(next);
+    } else {
+        next();
+    }
 };
 
 module.exports = { uploadToCloudinary };
