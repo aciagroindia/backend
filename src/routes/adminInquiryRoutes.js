@@ -8,6 +8,9 @@ const { checkAdminAccess } = require("../middlewares/checkAdminAccess");
 const adminOnly = [protect, admin, checkAdminAccess];
 
 router.get("/", adminOnly, inquiryController.getInquiries); // GET /api/admin/inquiries
+router.delete("/cleanup/closed", adminOnly, inquiryController.cleanupClosedInquiries); // DELETE /api/admin/inquiries/cleanup/closed
+router.post("/bulk-delete", adminOnly, inquiryController.bulkDeleteInquiries); // POST /api/admin/inquiries/bulk-delete
 router.patch("/:id", adminOnly, inquiryController.updateInquiryStatus); // PATCH /api/admin/inquiries/:id
+router.delete("/:id", adminOnly, inquiryController.deleteInquiry); // DELETE /api/admin/inquiries/:id
 
 module.exports = router;

@@ -83,3 +83,59 @@ exports.updateInquiryStatus = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Delete a single inquiry
+// @route   DELETE /api/admin/inquiries/:id
+// @access  Admin
+exports.deleteInquiry = async (req, res, next) => {
+  try {
+    const inquiry = await BulkInquiry.findByIdAndDelete(req.params.id);
+    if (!inquiry) {
+      throw createError(404, "Inquiry not found");
+    }
+
+    res.json({
+      success: true,
+      message: "Inquiry deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Cleanup all closed inquiries
+// @route   DELETE /api/admin/inquiries/cleanup/closed
+// @access  Admin
+exports.cleanupClosedInquiries = async (req, res, next) => {
+  try {
+    const result = await BulkInquiry.deleteMany({ status: "Closed" });
+    res.json({
+      success: true,
+      message: `Cleaned up ${result.deletedCount} closed inquiries`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Bulk delete inquiries by IDs
+// @route   POST /api/admin/inquiries/bulk-delete
+// @access  Admin
+exports.bulkDeleteInquiries = async (req, res, next) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw createError(400, "Please provide an array of inquiry IDs");
+    }
+
+    const result = await BulkInquiry.deleteMany({ _id: { $in: ids } });
+    res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} inquiries successfully`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

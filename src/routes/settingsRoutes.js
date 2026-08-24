@@ -44,4 +44,8 @@ router.put(
   settingsController.updatePreferences
 );
 
+// Database & Table Cleanup Routes
+router.get("/cleanup-stats", adminOnly, settingsController.getCleanupStats);
+router.post("/purge-unwanted", adminOnly, settingsController.purgeAllUnwanted);
+
 module.exports = router;

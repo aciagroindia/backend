@@ -211,5 +211,71 @@ const trackOrder = async (req, res, next) => {
     }
 };
 
+// ==========================================
+// DELETE A SINGLE ORDER
+// ==========================================
+const deleteOrder = async (req, res, next) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
 
-module.exports = { getOrders, getOrderById, updateOrderStatus, shipOrder, shiprocketWebhook, trackOrder };
+        await order.deleteOne();
+        res.status(200).json({
+            success: true,
+            message: 'Order deleted successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ==========================================
+// CLEANUP ALL CANCELLED ORDERS
+// ==========================================
+const cleanupCancelledOrders = async (req, res, next) => {
+    try {
+        const result = await Order.deleteMany({ orderStatus: 'cancelled' });
+        res.status(200).json({
+            success: true,
+            message: `Cleaned up ${result.deletedCount} cancelled orders`,
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// ==========================================
+// BULK DELETE ORDERS BY IDS
+// ==========================================
+const bulkDeleteOrders = async (req, res, next) => {
+    try {
+        const { ids } = req.body;
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, message: 'Please provide an array of order IDs' });
+        }
+
+        const result = await Order.deleteMany({ _id: { $in: ids } });
+        res.status(200).json({
+            success: true,
+            message: `Deleted ${result.deletedCount} orders successfully`,
+            deletedCount: result.deletedCount
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = {
+    getOrders,
+    getOrderById,
+    updateOrderStatus,
+    shipOrder,
+    shiprocketWebhook,
+    trackOrder,
+    deleteOrder,
+    cleanupCancelledOrders,
+    bulkDeleteOrders
+};

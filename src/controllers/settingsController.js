@@ -57,3 +57,52 @@ exports.updatePreferences = asyncHandler(async (req, res) => {
     const updatedPreferences = await settingsService.updateAdminPreferences(req.user.id, req.body);
     res.json({ success: true, data: updatedPreferences });
 });
+
+// @desc    Get counts of purgeable/cleanable records
+// @route   GET /api/admin/settings/cleanup-stats
+// @access  Private/Admin
+exports.getCleanupStats = asyncHandler(async (req, res) => {
+    const Order = require('../models/Order');
+    const BulkInquiry = require('../models/BulkInquiry');
+    const Notification = require('../models/Notification');
+
+    const [cancelledOrders, closedInquiries, totalNotifications] = await Promise.all([
+        Order.countDocuments({ orderStatus: 'cancelled' }),
+        BulkInquiry.countDocuments({ status: 'Closed' }),
+        Notification.countDocuments({})
+    ]);
+
+    res.json({
+        success: true,
+        data: {
+            cancelledOrders,
+            closedInquiries,
+            totalNotifications
+        }
+    });
+});
+
+// @desc    Purge all unwanted records in one click
+// @route   POST /api/admin/settings/purge-unwanted
+// @access  Private/Admin
+exports.purgeAllUnwanted = asyncHandler(async (req, res) => {
+    const Order = require('../models/Order');
+    const BulkInquiry = require('../models/BulkInquiry');
+    const Notification = require('../models/Notification');
+
+    const [orderRes, inquiryRes, notifRes] = await Promise.all([
+        Order.deleteMany({ orderStatus: 'cancelled' }),
+        BulkInquiry.deleteMany({ status: 'Closed' }),
+        Notification.deleteMany({})
+    ]);
+
+    res.json({
+        success: true,
+        message: 'All unwanted and closed records have been purged successfully.',
+        data: {
+            cancelledOrdersDeleted: orderRes.deletedCount,
+            closedInquiriesDeleted: inquiryRes.deletedCount,
+            notificationsDeleted: notifRes.deletedCount
+        }
+    });
+});

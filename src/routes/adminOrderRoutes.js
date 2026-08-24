@@ -8,7 +8,10 @@ const {
     updateOrderStatus,
     shipOrder,
     shiprocketWebhook,
-    trackOrder // 👈 NAYA IMPORT: Tracking function
+    trackOrder,
+    deleteOrder,
+    cleanupCancelledOrders,
+    bulkDeleteOrders
 } = require('../controllers/adminOrderController');
 
 // Import authentication middleware
@@ -23,12 +26,17 @@ const adminOnly = [protect, admin, checkAdminAccess];
 // ==========================================
 router.post('/webhook/tracking', shiprocketWebhook); 
 
+// Cleanup and Bulk Delete Routes (must be before /:id)
+router.delete('/cleanup/cancelled', adminOnly, cleanupCancelledOrders);
+router.post('/bulk-delete', adminOnly, bulkDeleteOrders);
+
 // Baaki saare admin routes
 router.route('/')
     .get(adminOnly, getOrders); // GET /api/admin/orders
 
 router.route('/:id')
-    .get(adminOnly, getOrderById); // GET /api/admin/orders/:id
+    .get(adminOnly, getOrderById) // GET /api/admin/orders/:id
+    .delete(adminOnly, deleteOrder); // DELETE /api/admin/orders/:id
 
 router.route('/:id/status')
     .put(adminOnly, updateOrderStatus); // PUT /api/admin/orders/:id/status
