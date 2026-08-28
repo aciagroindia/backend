@@ -39,7 +39,7 @@ const updateOrderStatus = async (req, res, next) => {
     try {
         const { status } = req.body;
         const order = await Order.findById(req.params.id)
-            .populate('customer', 'name email')
+            .populate('customer', 'name email phone')
             .populate('orderItems.product', 'name');
 
         if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
@@ -56,13 +56,10 @@ const updateOrderStatus = async (req, res, next) => {
         if (status === 'shipped' && order.orderStatus !== 'shipped') {
             try {
                 const srResponse = await createShiprocketOrder(order);
-                console.log("📦 SHIPROCKET FULL RESPONSE:", JSON.stringify(srResponse, null, 2));
                 
                 order.trackingId = srResponse.shipment_id ? String(srResponse.shipment_id) : "Pending AWB";
-                order.shiprocketOrderId = srResponse.order_id ? String(srResponse.order_id) : null; // 👈 NAYI LINE: Order ID bhi save karni hogi
+                order.shiprocketOrderId = srResponse.order_id ? String(srResponse.order_id) : null;
                 order.courierName = "Shiprocket";
-                console.log("🚀 Shiprocket Order Created! Shipment ID:", srResponse.shipment_id);
-
             } catch (shiprocketError) {
                 console.error("❌ Shiprocket Failed:", shiprocketError.message);
                 return res.status(500).json({ 
@@ -133,11 +130,6 @@ const shiprocketWebhook = async (req, res) => {
         }
 
         const webhookData = req.body;
-        console.log("🔔 Webhook Received. Status:", webhookData.current_status);
-        
-        // 👇 Pura data print karenge taaki pata chale Shiprocket kya bhej raha hai
-        console.log("📦 FULL WEBHOOK DATA:", JSON.stringify(webhookData, null, 2));
-
         const newStatus = webhookData.current_status; 
         const shipmentId = webhookData.shipment_id;
 

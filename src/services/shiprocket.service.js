@@ -19,48 +19,71 @@ const createShiprocketOrder = async (orderData) => {
     try {
         const token = await getShiprocketToken();
 
-        // Customer ka first name aur last name alag karna
-        const nameParts = (orderData.shippingInfo.name || "Customer").split(' ');
-        const firstName = nameParts[0];
-        const lastName = nameParts.slice(1).join(' ') || '.';
+        // 1. Real Customer Name
+        const rawName = (
+            orderData.shippingInfo?.name || 
+            (orderData.customer && typeof orderData.customer === 'object' ? orderData.customer.name : null) || 
+            "Customer"
+        ).trim();
 
-        // 👇 PHONE NUMBER SANITIZER
-        let rawPhone = orderData.shippingInfo.phoneNo || orderData.shippingInfo.phone || orderData.shippingInfo.phoneNumber || "";
+        const nameParts = rawName.split(' ').filter(Boolean);
+        const firstName = nameParts[0] || "Customer";
+        const lastName = nameParts.slice(1).join(' ') || (nameParts.length === 1 ? firstName : ".");
+
+        // 2. Real Phone Number
+        let rawPhone = (
+            orderData.shippingInfo?.phone || 
+            orderData.shippingInfo?.phoneNo || 
+            orderData.shippingInfo?.phoneNumber || 
+            (orderData.customer && typeof orderData.customer === 'object' ? orderData.customer.phone : null) || 
+            ""
+        );
         let cleanPhone = String(rawPhone).replace(/\D/g, ''); 
 
         if (cleanPhone.length > 10) {
             cleanPhone = cleanPhone.slice(-10); 
         }
-        if (cleanPhone.length < 10) {
-            cleanPhone = "9876543210"; 
-        }
+
+        // 3. Real Customer Email
+        const customerEmail = (
+            orderData.shippingInfo?.email || 
+            (orderData.customer && typeof orderData.customer === 'object' ? orderData.customer.email : null) || 
+            "orders@aciagro.com"
+        ).trim();
+
+        // 4. Address Details
+        const shippingAddress = orderData.shippingInfo?.address || "Address";
+        const shippingCity = orderData.shippingInfo?.city || "";
+        const shippingState = orderData.shippingInfo?.state || "";
+        const shippingPinCode = (orderData.shippingInfo?.pinCode || orderData.shippingInfo?.postalCode || orderData.shippingInfo?.pincode || "").toString();
+        const shippingCountry = orderData.shippingInfo?.country || "India";
 
         const shiprocketPayload = {
             order_id: orderData._id.toString().slice(-10),
-            order_date: new Date(orderData.createdAt).toISOString().split('T')[0],
-            pickup_location: "warehouse", 
+            order_date: new Date(orderData.createdAt || Date.now()).toISOString().split('T')[0],
+            pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION || "warehouse", 
             
             billing_customer_name: firstName,
             billing_last_name: lastName,
-            billing_address: orderData.shippingInfo.address,
-            billing_city: orderData.shippingInfo.city,
-            billing_pincode: orderData.shippingInfo.pinCode || orderData.shippingInfo.pincode,
-            billing_state: orderData.shippingInfo.state,
-            billing_country: orderData.shippingInfo.country || "India",
-            billing_email: orderData.customer.email || "customer@example.com",
+            billing_address: shippingAddress,
+            billing_city: shippingCity,
+            billing_pincode: shippingPinCode,
+            billing_state: shippingState,
+            billing_country: shippingCountry,
+            billing_email: customerEmail,
             
-            billing_phone: cleanPhone, 
+            billing_phone: cleanPhone || "9999999999", 
             shipping_is_billing: true, 
             
-            order_items: orderData.orderItems.map(item => ({
-                name: item.name,
-                sku: item.product.toString().slice(-8), 
-                units: item.quantity,
-                selling_price: item.price,
+            order_items: (orderData.orderItems || []).map(item => ({
+                name: item.name || "Product",
+                sku: item.product?._id ? item.product._id.toString().slice(-8) : item.product.toString().slice(-8), 
+                units: item.quantity || 1,
+                selling_price: item.price || 0,
             })),
             
             payment_method: orderData.paymentMethod === 'COD' ? 'COD' : 'Prepaid',
-            sub_total: orderData.totalAmount,
+            sub_total: orderData.totalAmount || 0,
             
             length: 10,
             breadth: 10,

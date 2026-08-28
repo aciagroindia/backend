@@ -232,7 +232,6 @@ exports.updateProduct = async (id, data, files) => {
   // --- 4. Save and Return ---
   try {
     const updatedDoc = await product.save();
-    console.log("✅ Product successfully updated in DB:", { name: updatedDoc.name, images: updatedDoc.images });
     return updatedDoc;
   } catch (error) {
     console.error("❌ Mongoose Save Error:", error.message);

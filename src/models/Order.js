@@ -19,12 +19,18 @@ const orderItemSchema = new mongoose.Schema({
 });
 
 const shippingInfoSchema = new mongoose.Schema({
+    name: { type: String },
+    phone: { type: String },
+    phoneNo: { type: String },
+    email: { type: String },
     address: { type: String, required: true },
     city: { type: String, required: true },
     state: { type: String, required: true },
-    country: { type: String, required: true },
+    country: { type: String, required: true, default: 'India' },
     pinCode: { type: String, required: true },
-});
+    postalCode: { type: String },
+}, { _id: false });
+
 
 const orderSchema = new mongoose.Schema({
     customer: { // Changed from 'user' to 'customer' as per requirement

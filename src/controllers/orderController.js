@@ -196,11 +196,24 @@ exports.createOrder = async (req, res, next) => {
 
     const selectedMethod = paymentMethod || 'Cashfree';
 
+    const shippingData = {
+      name: (shippingAddress?.name || '').trim(),
+      email: (shippingAddress?.email || '').trim(),
+      phone: (shippingAddress?.phone || shippingAddress?.phoneNo || '').trim(),
+      phoneNo: (shippingAddress?.phoneNo || shippingAddress?.phone || '').trim(),
+      address: (shippingAddress?.address || '').trim(),
+      city: (shippingAddress?.city || '').trim(),
+      state: (shippingAddress?.state || '').trim(),
+      country: (shippingAddress?.country || 'India').trim(),
+      pinCode: (shippingAddress?.pinCode || shippingAddress?.postalCode || '').trim(),
+      postalCode: (shippingAddress?.postalCode || shippingAddress?.pinCode || '').trim(),
+    };
+
     // 1. MONGODB ME ORDER CREATE KARNA
     const order = await Order.create({
       customer: req.user.id,
       orderItems,
-      shippingInfo: shippingAddress,
+      shippingInfo: shippingData,
       subtotal: serverCalculatedTotal,
       discountAmount: discountResult.discountAmount,
       appliedDiscount: discountResult.appliedDiscount,

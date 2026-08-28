@@ -13,17 +13,7 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET?.trim()
 });
 
-const getDebugValue = (value) => {
-    if (!value) return "NOT FOUND";
-    if (value.length < 8) return value;
-    return `${value.substring(0, 4)}...${value.substring(value.length - 4)}`;
-};
 
-console.log("☁️ Cloudinary Config Check:", {
-    name: process.env.CLOUDINARY_CLOUD_NAME || "NOT FOUND",
-    key: getDebugValue(process.env.CLOUDINARY_API_KEY),
-    secret: getDebugValue(process.env.CLOUDINARY_API_SECRET),
-});
 
 // 2. Storage Engine Setup
 const storage = new CloudinaryStorage({
