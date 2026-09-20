@@ -1,5 +1,5 @@
 const Order = require('../models/Order');
-const { createShiprocketOrder, cancelShiprocketOrder } = require('../services/shiprocket.service'); // 👈 Import kiya
+const { createDelhiveryOrder, cancelDelhiveryOrder, trackDelhiveryShipment, parseDelhiveryStatus } = require('../services/delhivery.service');
 
 // GET ALL ORDERS (Strictly Filtered for Admin)
 const getOrders = async (req, res, next) => {
@@ -12,6 +12,32 @@ const getOrders = async (req, res, next) => {
         })
             .populate('customer', 'name email') 
             .sort({ createdAt: -1 });
+
+        // Auto-sync in-flight orders with Delhivery (capped at 15 most recent for performance & rate-limit safety)
+        const activeOrders = orders.filter(o => {
+            const waybill = o.delhiveryWaybill || o.trackingId;
+            return waybill && waybill !== "Pending AWB" && o.orderStatus !== 'delivered' && o.orderStatus !== 'cancelled';
+        }).slice(0, 15);
+
+        if (activeOrders.length > 0) {
+            await Promise.allSettled(
+                activeOrders.map(async (order) => {
+                    try {
+                        const waybill = order.delhiveryWaybill || order.trackingId;
+                        const liveData = await trackDelhiveryShipment(waybill);
+                        const liveStatus = parseDelhiveryStatus(liveData);
+                        if (liveStatus && liveStatus !== order.orderStatus) {
+                            order.orderStatus = liveStatus;
+                            if (liveStatus === 'delivered') order.deliveredAt = new Date();
+                            await order.save();
+                            console.log(`🔄 Auto-synced order list ${order._id} live status to '${liveStatus}' from Delhivery`);
+                        }
+                    } catch (syncErr) {
+                        // ignore background tracking errors for individual orders so list always succeeds
+                    }
+                })
+            );
+        }
 
         res.status(200).json({ success: true, data: orders });
     } catch (error) {
@@ -27,6 +53,23 @@ const getOrderById = async (req, res, next) => {
             .populate('orderItems.product', 'name image price');
 
         if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+        // Auto-sync live status from Delhivery if order has an active Waybill
+        const waybill = order.delhiveryWaybill || order.trackingId;
+        if (waybill && waybill !== "Pending AWB" && order.orderStatus !== 'delivered') {
+            try {
+                const liveData = await trackDelhiveryShipment(waybill);
+                const liveStatus = parseDelhiveryStatus(liveData);
+                if (liveStatus && liveStatus !== order.orderStatus) {
+                    order.orderStatus = liveStatus;
+                    if (liveStatus === 'delivered') order.deliveredAt = new Date();
+                    await order.save();
+                    console.log(`🔄 Auto-synced order ${order._id} live status to '${liveStatus}' from Delhivery`);
+                }
+            } catch (syncErr) {
+                console.warn("Live status check on getOrderById notice:", syncErr.message);
+            }
+        }
 
         res.status(200).json({ success: true, data: order });
     } catch (error) {
@@ -52,43 +95,43 @@ const updateOrderStatus = async (req, res, next) => {
             });
         }
 
-        // --- SHIPROCKET CREATE MAGIC START ---
+        // --- DELHIVERY CREATE SHIPMENT START ---
         if (status === 'shipped' && order.orderStatus !== 'shipped') {
             try {
-                const srResponse = await createShiprocketOrder(order);
+                const dlResponse = await createDelhiveryOrder(order);
                 
-                order.trackingId = srResponse.shipment_id ? String(srResponse.shipment_id) : "Pending AWB";
-                order.shiprocketOrderId = srResponse.order_id ? String(srResponse.order_id) : null;
-                order.courierName = "Shiprocket";
-            } catch (shiprocketError) {
-                console.error("❌ Shiprocket Failed:", shiprocketError.message);
+                const waybill = dlResponse.waybill ? String(dlResponse.waybill) : (dlResponse.upload_wbn ? String(dlResponse.upload_wbn) : "Pending AWB");
+                order.trackingId = waybill;
+                order.delhiveryWaybill = dlResponse.waybill ? String(dlResponse.waybill) : null;
+                order.delhiveryOrderId = dlResponse.order_id ? String(dlResponse.order_id) : String(order._id);
+                order.courierName = "Delhivery";
+            } catch (delhiveryError) {
+                console.error("❌ Delhivery Failed:", delhiveryError.message);
                 return res.status(500).json({ 
                     success: false, 
-                    message: "Order update failed! " + (shiprocketError.message || "Shiprocket integration issue.") 
+                    message: "Order update failed! " + (delhiveryError.message || "Delhivery integration issue.") 
                 });
             }
         }
-        // --- SHIPROCKET CREATE MAGIC END ---
+        // --- DELHIVERY CREATE SHIPMENT END ---
 
-        // 👇 --- NAYA: SHIPROCKET CANCEL MAGIC START --- 👇
+        // --- DELHIVERY CANCEL SHIPMENT START ---
         if (status === 'cancelled' && order.orderStatus !== 'cancelled') {
-            // Agar Shiprocket me order ban chuka tha, tabhi cancel bhejo
-            if (order.shiprocketOrderId) {
+            const waybillToCancel = order.delhiveryWaybill || order.trackingId;
+            if (waybillToCancel && waybillToCancel !== "Pending AWB") {
                 try {
-                    await cancelShiprocketOrder(order.shiprocketOrderId);
-                    console.log(`🚀 Shiprocket Order Cancelled Successfully! SR Order ID: ${order.shiprocketOrderId}`);
-                } catch (srCancelError) {
-                    console.error("❌ Shiprocket Cancel Failed:", srCancelError.message);
+                    await cancelDelhiveryOrder(waybillToCancel);
+                    console.log(`🚀 Delhivery Order Cancelled Successfully! Waybill: ${waybillToCancel}`);
+                } catch (dlCancelError) {
+                    console.error("❌ Delhivery Cancel Failed:", dlCancelError.message);
                     return res.status(500).json({ 
                         success: false, 
-                        message: "Order cancel failed on Shiprocket! " + srCancelError.message 
+                        message: "Order cancel failed on Delhivery! " + dlCancelError.message 
                     });
                 }
-            } else if (order.trackingId && order.trackingId !== "Pending AWB") {
-                console.log("⚠️ Note: Purane test order me Shiprocket Order ID nahi mili, isliye manually cancel karna padega.");
             }
         }
-        // 👆 --- SHIPROCKET CANCEL MAGIC END --- 👆
+        // --- DELHIVERY CANCEL SHIPMENT END ---
 
         order.orderStatus = status;
         if (status === 'delivered') order.deliveredAt = new Date();
@@ -117,61 +160,56 @@ const shipOrder = async (req, res, next) => {
 };
 
 // ==========================================
-// NEW: SHIPROCKET WEBHOOK (System to System)
+// DELHIVERY WEBHOOK (System to System)
 // ==========================================
-const shiprocketWebhook = async (req, res) => {
+const delhiveryWebhook = async (req, res) => {
     try {
-        const incomingToken = req.headers['x-api-key'];
-        const mySecretToken = process.env.SHIPROCKET_WEBHOOK_TOKEN || 'l7cMT9AEPIW#Fyi)RQ[^Ak';
+        const incomingToken = req.headers['x-api-key'] || req.headers['authorization'];
+        const mySecretToken = process.env.DELHIVERY_WEBHOOK_TOKEN;
 
-        if (incomingToken !== mySecretToken) {
-            console.error("🚨 Unauthorized Webhook Attempt! Wrong Token:", incomingToken);
+        if (mySecretToken && incomingToken && !incomingToken.includes(mySecretToken)) {
+            console.error("🚨 Unauthorized Webhook Attempt!");
             return res.status(401).send("Unauthorized Access: Invalid Token");
         }
 
-        const webhookData = req.body;
-        const newStatus = webhookData.current_status; 
-        const shipmentId = webhookData.shipment_id;
+        const webhookData = req.body || {};
+        const waybill = webhookData.waybill || webhookData.Waybill || webhookData.shipment_id;
 
-        // 👇 SMART CHECK FIX: Ab hum 'status' check karenge dummy ke liye, 'shipmentId' nahi
-        if (!newStatus) {
-            console.log("⚠️ Dummy request received (No Status). Sending 200 OK.");
-            return res.status(200).send("Webhook test successful");
+        if (!waybill) {
+            return res.status(200).send("Webhook ping received successfully");
         }
 
-        // Agar webhook me shipment_id hi nahi aaya
-        if (!shipmentId) {
-            console.log("🚨 Webhook me shipment_id nahi hai! Data update skip kar rahe hain.");
-            return res.status(200).send("Received, but no shipment_id");
-        }
-
-        const order = await Order.findOne({ trackingId: String(shipmentId) });
+        const order = await Order.findOne({ 
+            $or: [
+                { delhiveryWaybill: String(waybill) },
+                { trackingId: String(waybill) }
+            ]
+        });
 
         if (order) {
-            if (newStatus === 'DELIVERED') {
-                order.orderStatus = 'delivered';
-                order.deliveredAt = new Date();
-            } else if (newStatus === 'RTO DELIVERED' || newStatus === 'RTO INITIATED') {
-                order.orderStatus = 'returned'; 
-            } else if (newStatus === 'CANCELED' || newStatus === 'CANCELLED') {
-                order.orderStatus = 'cancelled';
+            const detectedStatus = parseDelhiveryStatus(webhookData);
+            if (detectedStatus && detectedStatus !== order.orderStatus) {
+                order.orderStatus = detectedStatus;
+                if (detectedStatus === 'delivered') order.deliveredAt = new Date();
+                await order.save();
+                console.log(`✅ Order ${order._id} successfully auto-updated to '${detectedStatus}' via Delhivery Webhook!`);
             }
-            
-            await order.save();
-            console.log(`✅ Order ${order._id} successfully auto-updated to '${order.orderStatus}' via Webhook!`);
         } else {
-            console.log(`⚠️ Order with Tracking ID ${shipmentId} not found in DB.`);
+            console.log(`⚠️ Order with Waybill ${waybill} not found in DB.`);
         }
 
         res.status(200).send("Webhook received successfully");
     } catch (error) {
-        console.error("❌ Webhook Error:", error);
+        console.error("❌ Delhivery Webhook Error:", error);
         res.status(500).send("Server Error");
     }
 };
 
+// Backward compatibility alias for webhook
+const shiprocketWebhook = delhiveryWebhook;
+
 // ==========================================
-// NEW: TRACK ORDER FUNCTION (Frontend ke liye)
+// TRACK ORDER FUNCTION (Frontend ke liye)
 // ==========================================
 const trackOrder = async (req, res, next) => {
     try {
@@ -181,7 +219,6 @@ const trackOrder = async (req, res, next) => {
             return res.status(404).json({ success: false, message: 'Order not found' });
         }
 
-        // Agar order ship hi nahi hua hai
         if (!order.trackingId || order.trackingId === "Pending AWB") {
             return res.status(400).json({ 
                 success: false, 
@@ -189,13 +226,30 @@ const trackOrder = async (req, res, next) => {
             });
         }
 
-        // Tracking data bhej rahe hain (Ab frontend crash nahi hoga)
+        const waybill = order.delhiveryWaybill || order.trackingId;
+
+        // Auto-sync live status from Delhivery (helpful during local testing & webhook backup)
+        try {
+            const liveData = await trackDelhiveryShipment(waybill);
+            const liveStatus = parseDelhiveryStatus(liveData);
+
+            if (liveStatus && liveStatus !== order.orderStatus) {
+                order.orderStatus = liveStatus;
+                if (liveStatus === 'delivered') order.deliveredAt = new Date();
+                await order.save();
+                console.log(`🔄 Auto-synced order ${order._id} live status to '${liveStatus}' from Delhivery`);
+            }
+        } catch (syncErr) {
+            console.warn("Live tracking sync check notice:", syncErr.message);
+        }
+
         res.status(200).json({
             success: true,
             data: {
-                trackingId: order.trackingId,
-                courier: order.courierName || 'Shiprocket',
-                trackingUrl: `https://shiprocket.co/tracking/${order.trackingId}` // Shiprocket ka direct tracking link
+                trackingId: waybill,
+                orderStatus: order.orderStatus,
+                courier: order.courierName || 'Delhivery',
+                trackingUrl: `https://www.delhivery.com/track/package/${waybill}`
             }
         });
     } catch (error) {
@@ -265,6 +319,7 @@ module.exports = {
     getOrderById,
     updateOrderStatus,
     shipOrder,
+    delhiveryWebhook,
     shiprocketWebhook,
     trackOrder,
     deleteOrder,

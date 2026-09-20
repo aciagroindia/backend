@@ -20,6 +20,7 @@ const {
   calculateBestAutomaticDiscount,
 } = require("../services/discountCalculation.service");
 const couponService = require("../services/coupon.service");
+const { trackDelhiveryShipment, parseDelhiveryStatus } = require('../services/delhivery.service');
 
 let razorpay = null;
 const rzpKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID;
@@ -700,6 +701,31 @@ exports.getMyOrders = async (req, res, next) => {
       .populate('orderItems.product', 'name slug image')
       .sort({ createdAt: -1 });
 
+    // Auto-sync in-flight orders with Delhivery
+    const activeOrders = orders.filter(o => {
+      const waybill = o.delhiveryWaybill || o.trackingId;
+      return waybill && waybill !== "Pending AWB" && o.orderStatus !== 'delivered' && o.orderStatus !== 'cancelled';
+    }).slice(0, 10);
+
+    if (activeOrders.length > 0) {
+      await Promise.allSettled(
+        activeOrders.map(async (order) => {
+          try {
+            const waybill = order.delhiveryWaybill || order.trackingId;
+            const liveData = await trackDelhiveryShipment(waybill);
+            const liveStatus = parseDelhiveryStatus(liveData);
+            if (liveStatus && liveStatus !== order.orderStatus) {
+              order.orderStatus = liveStatus;
+              if (liveStatus === 'delivered') order.deliveredAt = new Date();
+              await order.save();
+            }
+          } catch (e) {
+            // ignore background tracking errors for individual orders
+          }
+        })
+      );
+    }
+
     res.json({ success: true, data: orders });
   } catch (error) {
     next(error);
@@ -723,6 +749,22 @@ exports.getOrderById = async (req, res, next) => {
       return res.status(403).json({ success: false, message: "Not authorized to view this order" });
     }
 
+    // Auto-sync live status from Delhivery if order has an active Waybill
+    const waybill = order.delhiveryWaybill || order.trackingId;
+    if (waybill && waybill !== "Pending AWB" && order.orderStatus !== 'delivered' && order.orderStatus !== 'cancelled') {
+      try {
+        const liveData = await trackDelhiveryShipment(waybill);
+        const liveStatus = parseDelhiveryStatus(liveData);
+        if (liveStatus && liveStatus !== order.orderStatus) {
+          order.orderStatus = liveStatus;
+          if (liveStatus === 'delivered') order.deliveredAt = new Date();
+          await order.save();
+        }
+      } catch (syncErr) {
+        // ignore background tracking errors
+      }
+    }
+
     res.json({ success: true, data: order });
   } catch (error) {
     next(error);
@@ -742,6 +784,31 @@ exports.getAllAdminOrders = async (req, res, next) => {
     })
       .populate('customer', 'name email')
       .sort({ createdAt: -1 });
+
+    // Auto-sync in-flight orders with Delhivery
+    const activeOrders = orders.filter(o => {
+      const waybill = o.delhiveryWaybill || o.trackingId;
+      return waybill && waybill !== "Pending AWB" && o.orderStatus !== 'delivered' && o.orderStatus !== 'cancelled';
+    }).slice(0, 15);
+
+    if (activeOrders.length > 0) {
+      await Promise.allSettled(
+        activeOrders.map(async (order) => {
+          try {
+            const waybill = order.delhiveryWaybill || order.trackingId;
+            const liveData = await trackDelhiveryShipment(waybill);
+            const liveStatus = parseDelhiveryStatus(liveData);
+            if (liveStatus && liveStatus !== order.orderStatus) {
+              order.orderStatus = liveStatus;
+              if (liveStatus === 'delivered') order.deliveredAt = new Date();
+              await order.save();
+            }
+          } catch (e) {
+            // ignore background tracking errors for individual orders
+          }
+        })
+      );
+    }
 
     res.json({ success: true, count: orders.length, data: orders });
   } catch (error) {

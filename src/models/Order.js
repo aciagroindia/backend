@@ -101,7 +101,13 @@ const orderSchema = new mongoose.Schema({
     trackingId: {
         type: String,
     },
-    shiprocketOrderId: { // 👈 Ye naya add karna hai
+    delhiveryWaybill: {
+        type: String,
+    },
+    delhiveryOrderId: {
+        type: String,
+    },
+    shiprocketOrderId: { // Preserved for backward compatibility
         type: String,
     },
     courierName: {

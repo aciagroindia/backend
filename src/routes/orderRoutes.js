@@ -16,7 +16,7 @@ const {
   cancelMyOrder
 } = require("../controllers/orderController");
 
-const { shiprocketWebhook } = require('../controllers/adminOrderController');
+const { delhiveryWebhook, shiprocketWebhook } = require('../controllers/adminOrderController');
 const { protect } = require("../middlewares/authMiddleware");
 const { validate } = require("../middlewares/validationMiddleware");
 
@@ -26,9 +26,10 @@ const {
 } = require("../validations/order.validation");
 
 // ==========================================
-// 🔔 SHIPROCKET & CASHFREE WEBHOOK ROUTES
+// 🔔 DELHIVERY & CASHFREE WEBHOOK ROUTES
 // Dhyan de: Webhook routes par protect middleware nahi lagta
 // ==========================================
+router.post("/webhook/delhivery", delhiveryWebhook);
 router.post("/webhook/shiprocket", shiprocketWebhook);
 router.post("/cashfree-webhook", handleCashfreeWebhook);
 router.post("/webhook/cashfree", handleCashfreeWebhook);

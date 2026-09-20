@@ -7,6 +7,7 @@ const {
     getOrderById,
     updateOrderStatus,
     shipOrder,
+    delhiveryWebhook,
     shiprocketWebhook,
     trackOrder,
     deleteOrder,
@@ -22,9 +23,10 @@ const { checkAdminAccess } = require('../middlewares/checkAdminAccess');
 const adminOnly = [protect, admin, checkAdminAccess];
 
 // ==========================================
-// 🔔 SHIPROCKET WEBHOOK ROUTE 
+// 🔔 DELHIVERY WEBHOOK ROUTE 
 // ==========================================
-router.post('/webhook/tracking', shiprocketWebhook); 
+router.post('/webhook/delhivery', delhiveryWebhook);
+router.post('/webhook/tracking', delhiveryWebhook); 
 
 // Cleanup and Bulk Delete Routes (must be before /:id)
 router.delete('/cleanup/cancelled', adminOnly, cleanupCancelledOrders);
