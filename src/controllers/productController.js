@@ -107,6 +107,19 @@ exports.createProduct = async (req, res, next) => {
                 }
             }
         }
+
+        let descriptionSectionsInput = productData.descriptionSections;
+        if (typeof descriptionSectionsInput === 'string') {
+            if (descriptionSectionsInput.includes('[object Object]') || descriptionSectionsInput.trim() === '') {
+                productData.descriptionSections = [];
+            } else {
+                try {
+                    productData.descriptionSections = JSON.parse(descriptionSectionsInput);
+                } catch (e) {
+                    throw createError(400, 'Invalid format for Description Sections. Must be valid JSON.');
+                }
+            }
+        }
  
         const product = await productService.createProduct(productData, req.files);
         res.status(201).json(product);
@@ -146,6 +159,21 @@ exports.updateProduct = async (req, res, next) => {
                         updateData.packages = JSON.parse(packagesInput);
                     } catch (e) {
                         throw createError(400, 'Invalid format for Packages. Must be valid JSON.');
+                    }
+                }
+            }
+        }
+
+        if (Object.prototype.hasOwnProperty.call(updateData, 'descriptionSections')) {
+            let descSecInput = updateData.descriptionSections;
+            if (typeof descSecInput === 'string') {
+                if (descSecInput.includes('[object Object]') || descSecInput.trim() === '') {
+                    updateData.descriptionSections = [];
+                } else {
+                    try {
+                        updateData.descriptionSections = JSON.parse(descSecInput);
+                    } catch (e) {
+                        throw createError(400, 'Invalid format for Description Sections. Must be valid JSON.');
                     }
                 }
             }

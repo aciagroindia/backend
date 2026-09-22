@@ -61,13 +61,34 @@ exports.createProduct = async (data, files) => {
     }
   }
 
+  let finalDescriptionSections = [];
+  if (Array.isArray(data.descriptionSections)) {
+    finalDescriptionSections = data.descriptionSections;
+  } else if (typeof data.descriptionSections === 'string' && data.descriptionSections.trim()) {
+    try {
+      finalDescriptionSections = JSON.parse(data.descriptionSections);
+    } catch (e) {
+      finalDescriptionSections = [];
+    }
+  }
+  finalDescriptionSections = finalDescriptionSections
+    .filter(s => s && s.title && s.title.trim() && s.content && s.content.trim())
+    .map(s => ({ title: s.title.trim(), content: s.content.trim() }));
+
+  let finalDescription = data.description || "";
+  if (!finalDescription && finalDescriptionSections.length > 0) {
+    finalDescription = finalDescriptionSections.map(s => `${s.title}\n${s.content}`).join('\n\n');
+  }
+
   const product = new Product({
     ...data,
     slug,
     images: images,
     publicIds: publicIds,
     faqs: finalFaqs,
-    packages: finalPackages
+    packages: finalPackages,
+    descriptionSections: finalDescriptionSections,
+    description: finalDescription
   });
 
   await product.save();
@@ -223,6 +244,22 @@ exports.updateProduct = async (id, data, files) => {
     if (typeof data.packages === 'string' && data.packages.trim()) {
       try { data.packages = JSON.parse(data.packages); } catch (e) { delete data.packages; }
     } else if (!Array.isArray(data.packages)) { delete data.packages; }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'descriptionSections')) {
+    if (typeof data.descriptionSections === 'string' && data.descriptionSections.trim()) {
+      try { data.descriptionSections = JSON.parse(data.descriptionSections); } catch (e) { delete data.descriptionSections; }
+    } else if (!Array.isArray(data.descriptionSections)) { delete data.descriptionSections; }
+
+    if (Array.isArray(data.descriptionSections)) {
+      data.descriptionSections = data.descriptionSections
+        .filter(s => s && s.title && s.title.trim() && s.content && s.content.trim())
+        .map(s => ({ title: s.title.trim(), content: s.content.trim() }));
+      
+      if (!data.description && data.descriptionSections.length > 0) {
+        data.description = data.descriptionSections.map(s => `${s.title}\n${s.content}`).join('\n\n');
+      }
+    }
   }
 
   Object.assign(product, data);

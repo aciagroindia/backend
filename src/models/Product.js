@@ -14,10 +14,16 @@ const packageSchema = new mongoose.Schema({
     badge: { type: String }, // e.g., "BESTSELLER", "SAVE 10%"
 });
 
+const descriptionSectionSchema = new mongoose.Schema({
+    title: { type: String, required: true, trim: true },
+    content: { type: String, required: true },
+}, { _id: false });
+
 const productSchema = new mongoose.Schema({
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, unique: true },
-    description: { type: String, required: true }, // For the DescriptionSection
+    description: { type: String }, // Legacy/fallback string
+    descriptionSections: [descriptionSectionSchema],
     price: { type: Number, required: true },
     category: { 
         type: mongoose.Schema.Types.ObjectId, 
