@@ -20,7 +20,12 @@ const {
   calculateBestAutomaticDiscount,
 } = require("../services/discountCalculation.service");
 const couponService = require("../services/coupon.service");
-const { trackDelhiveryShipment, parseDelhiveryStatus } = require('../services/delhivery.service');
+const {
+  trackDelhiveryShipment,
+  parseDelhiveryStatus,
+  checkPincodeServiceability,
+  calculateDelhiveryShippingRate
+} = require('../services/delhivery.service');
 
 let razorpay = null;
 const rzpKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID;
@@ -38,11 +43,73 @@ if (rzpKeyId && rzpKeySecret) {
 }
 
 // ==========================================
+// CHECK SHIPPING AVAILABILITY & CALCULATE RATE
+// ==========================================
+exports.checkShippingAvailabilityAndRate = async (req, res, next) => {
+  try {
+    const { pincode, items, paymentMethod } = req.body;
+
+    const cleanPin = String(pincode || "").replace(/\D/g, '').trim();
+    if (!cleanPin || cleanPin.length !== 6) {
+      return res.status(400).json({
+        success: false,
+        serviceable: false,
+        message: "Please provide a valid 6-digit PIN code."
+      });
+    }
+
+    // 1. Serviceability Check via Delhivery
+    const serviceResult = await checkPincodeServiceability(cleanPin);
+    if (!serviceResult.serviceable) {
+      return res.json({
+        success: false,
+        serviceable: false,
+        pincode: cleanPin,
+        message: serviceResult.message || `Delivery is currently not available to pincode ${cleanPin}.`
+      });
+    }
+
+    // 2. Calculate Total Weight in grams (default 500g per item if not specified)
+    let totalWeight = 500;
+    if (Array.isArray(items) && items.length > 0) {
+      const totalQty = items.reduce((sum, item) => sum + (Number(item.quantity || item.qty) || 1), 0);
+      totalWeight = Math.max(500, totalQty * 500);
+    }
+
+    // 3. Dynamic Rate Calculation via Delhivery
+    const rateResult = await calculateDelhiveryShippingRate({
+      destinationPin: cleanPin,
+      weightGrams: totalWeight,
+      paymentMode: paymentMethod || 'Prepaid'
+    });
+
+    const codFee = paymentMethod === 'COD' ? 30 : 0;
+
+    return res.json({
+      success: true,
+      serviceable: true,
+      pincode: cleanPin,
+      city: serviceResult.city || serviceResult.district,
+      district: serviceResult.district,
+      state: serviceResult.state,
+      codAvailable: serviceResult.codAvailable,
+      prepaidAvailable: serviceResult.prepaidAvailable,
+      shippingCharge: rateResult.shippingCharge,
+      codFee: codFee,
+      weightGrams: totalWeight,
+      zone: rateResult.zone,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==========================================
 // PREVIEW AUTOMATIC DISCOUNT & COUPON
 // ==========================================
 exports.previewOrderDiscount = async (req, res, next) => {
   try {
-    const { items, couponCode } = req.body;
+    const { items, couponCode, pincode, paymentMethod } = req.body;
     if (!items || items.length === 0) {
       return res.json({
         success: true,
@@ -50,6 +117,8 @@ exports.previewOrderDiscount = async (req, res, next) => {
           subtotal: 0,
           discountAmount: 0,
           couponDiscount: 0,
+          shippingFee: 0,
+          codFee: 0,
           finalTotal: 0,
           appliedDiscount: null,
           appliedCoupon: null,
@@ -108,7 +177,41 @@ exports.previewOrderDiscount = async (req, res, next) => {
       }
     }
 
-    const finalTotal = Math.max(0, Math.round((subtotal - discountResult.discountAmount - couponDiscount) * 100) / 100);
+    // Optional Pincode Shipping Calculation in Preview
+    let shippingFee = 0;
+    let shippingInfo = null;
+    if (pincode) {
+      const cleanPin = String(pincode).replace(/\D/g, '').trim();
+      if (cleanPin.length === 6) {
+        try {
+          const serviceResult = await checkPincodeServiceability(cleanPin);
+          if (serviceResult.serviceable) {
+            const totalQty = validatedItems.reduce((sum, i) => sum + (Number(i.quantity) || 1), 0);
+            const weightGrams = Math.max(500, totalQty * 500);
+            const rateResult = await calculateDelhiveryShippingRate({
+              destinationPin: cleanPin,
+              weightGrams,
+              paymentMode: paymentMethod || 'Prepaid'
+            });
+            shippingFee = rateResult.shippingCharge;
+            shippingInfo = {
+              serviceable: true,
+              shippingCharge: shippingFee,
+              city: serviceResult.city || serviceResult.district,
+              state: serviceResult.state,
+              codAvailable: serviceResult.codAvailable
+            };
+          } else {
+            shippingInfo = { serviceable: false, message: serviceResult.message };
+          }
+        } catch (sErr) {
+          // ignore preview shipping errors
+        }
+      }
+    }
+
+    const codFee = paymentMethod === 'COD' ? 30 : 0;
+    const finalTotal = Math.max(0, Math.round((subtotal - discountResult.discountAmount - couponDiscount + shippingFee + codFee) * 100) / 100);
 
     res.json({
       success: true,
@@ -116,6 +219,9 @@ exports.previewOrderDiscount = async (req, res, next) => {
         ...discountResult,
         couponDiscount,
         appliedCoupon,
+        shippingFee,
+        codFee,
+        shippingInfo,
         finalTotal,
       },
     });
@@ -190,12 +296,40 @@ exports.createOrder = async (req, res, next) => {
       };
     }
 
+    const selectedMethod = paymentMethod || 'Cashfree';
+
+    // --- Strict Server-Side Pincode Serviceability & Dynamic Shipping Rate Calculation ---
+    const cleanPincode = String(shippingAddress?.pinCode || shippingAddress?.postalCode || '').replace(/\D/g, '').trim();
+    if (!cleanPincode || cleanPincode.length !== 6) {
+      throw createError(400, "Please provide a valid 6-digit delivery PIN code.");
+    }
+
+    const serviceResult = await checkPincodeServiceability(cleanPincode);
+    if (!serviceResult.serviceable) {
+      throw createError(400, serviceResult.message || `Delivery is currently not available to PIN code ${cleanPincode}.`);
+    }
+
+    if (selectedMethod === 'COD' && !serviceResult.codAvailable) {
+      throw createError(400, `Cash on Delivery (COD) is not available for PIN code ${cleanPincode}. Please choose Online Payment.`);
+    }
+
+    const totalQty = orderItems.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+    const weightGrams = Math.max(500, totalQty * 500);
+
+    const rateResult = await calculateDelhiveryShippingRate({
+      destinationPin: cleanPincode,
+      weightGrams,
+      paymentMode: selectedMethod
+    });
+    const serverShippingCharge = Number(rateResult.shippingCharge) || 0;
+
+    // Extra ₹30 handling charge for Cash on Delivery orders
+    const codFee = selectedMethod === 'COD' ? 30 : 0;
+
     const finalPayableTotal = Math.max(
       0,
-      Math.round((serverCalculatedTotal - discountResult.discountAmount - couponDiscount) * 100) / 100
+      Math.round((serverCalculatedTotal - discountResult.discountAmount - couponDiscount + serverShippingCharge + codFee) * 100) / 100
     );
-
-    const selectedMethod = paymentMethod || 'Cashfree';
 
     const shippingData = {
       name: (shippingAddress?.name || '').trim(),
@@ -203,11 +337,11 @@ exports.createOrder = async (req, res, next) => {
       phone: (shippingAddress?.phone || shippingAddress?.phoneNo || '').trim(),
       phoneNo: (shippingAddress?.phoneNo || shippingAddress?.phone || '').trim(),
       address: (shippingAddress?.address || '').trim(),
-      city: (shippingAddress?.city || '').trim(),
-      state: (shippingAddress?.state || '').trim(),
+      city: (shippingAddress?.city || serviceResult.city || serviceResult.district || '').trim(),
+      state: (shippingAddress?.state || serviceResult.state || '').trim(),
       country: (shippingAddress?.country || 'India').trim(),
-      pinCode: (shippingAddress?.pinCode || shippingAddress?.postalCode || '').trim(),
-      postalCode: (shippingAddress?.postalCode || shippingAddress?.pinCode || '').trim(),
+      pinCode: cleanPincode,
+      postalCode: cleanPincode,
     };
 
     // 1. MONGODB ME ORDER CREATE KARNA
@@ -219,6 +353,16 @@ exports.createOrder = async (req, res, next) => {
       discountAmount: discountResult.discountAmount,
       appliedDiscount: discountResult.appliedDiscount,
       coupon: couponData,
+      shippingFee: serverShippingCharge,
+      shippingDetails: {
+        courier: 'Delhivery',
+        pincode: cleanPincode,
+        city: serviceResult.city || serviceResult.district,
+        state: serviceResult.state,
+        charge: serverShippingCharge,
+        weightGrams: weightGrams,
+      },
+      codFee: codFee,
       totalAmount: finalPayableTotal,
       paymentMethod: selectedMethod,
       paymentStatus: 'pending',

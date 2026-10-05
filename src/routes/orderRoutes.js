@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   createOrder,
   previewOrderDiscount,
+  checkShippingAvailabilityAndRate,
   verifyPayment, 
   handleCashfreeWebhook,
   verifyCashfreeOrder,
@@ -33,6 +34,11 @@ router.post("/webhook/delhivery", delhiveryWebhook);
 router.post("/webhook/shiprocket", shiprocketWebhook);
 router.post("/cashfree-webhook", handleCashfreeWebhook);
 router.post("/webhook/cashfree", handleCashfreeWebhook);
+
+// ==========================================
+// 🚚 PINCODE SERVICEABILITY & SHIPPING RATE
+// ==========================================
+router.post("/check-shipping", checkShippingAvailabilityAndRate);
 
 // ==========================================
 // 💳 CASHFREE VERIFICATION & RETRY ROUTES

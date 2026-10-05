@@ -10,10 +10,10 @@ const shippingAddressSchema = Joi.object({
   phone: Joi.string().required(),
   address: Joi.string().required(),
   city: Joi.string().required(),
-  postalCode: Joi.string().required(),
-  state: Joi.string().optional(),
-  country: Joi.string().optional(),
-  pinCode: Joi.string().optional(),
+  pinCode: Joi.string().required(),
+  postalCode: Joi.string().optional().allow('', null),
+  state: Joi.string().optional().allow('', null),
+  country: Joi.string().optional().allow('', null),
 }).unknown(true); // Safety for live code
 
 const createOrderSchema = Joi.object({

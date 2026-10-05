@@ -5,7 +5,7 @@ const createError = require("http-errors");
 const getCart = async (userId) => {
   let cart = await Cart.findOne({ user: userId }).populate(
     "items.product",
-    "name price image slug stock"
+    "name price images image slug stock"
   );
 
   if (!cart) {
@@ -39,6 +39,8 @@ const addToCart = async (userId, productData) => {
     (item) => item.product._id.toString() === productId
   );
 
+  const productImg = (product.images && product.images.length > 0) ? product.images[0] : (product.image || "");
+
   if (existingItem) {
     const newQuantity = existingItem.quantity + quantity;
     if (product.stock < newQuantity) {
@@ -48,6 +50,9 @@ const addToCart = async (userId, productData) => {
       );
     }
     existingItem.quantity = newQuantity;
+    if (!existingItem.image && productImg) {
+      existingItem.image = productImg;
+    }
   } else {
     if (product.stock < quantity) {
       throw createError(
@@ -60,13 +65,13 @@ const addToCart = async (userId, productData) => {
       name: product.name,
       price: product.price,
       quantity: quantity,
-      image: product.image,
+      image: productImg,
       slug: product.slug,
     });
   }
 
   await cart.save();
-  await cart.populate("items.product", "name price image slug stock");
+  await cart.populate("items.product", "name price images image slug stock");
 
   return cart;
 };

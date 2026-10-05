@@ -309,10 +309,139 @@ const parseDelhiveryStatus = (liveData) => {
     return null;
 };
 
+/**
+ * Check Pincode Serviceability via Delhivery API
+ * @param {string|number} pincode - 6 digit destination pincode
+ * @returns {Promise<Object>} Serviceability details
+ */
+const checkPincodeServiceability = async (pincode) => {
+    try {
+        const token = getDelhiveryToken();
+        if (!token) {
+            throw new Error("Delhivery API Token is missing in .env");
+        }
+
+        const cleanPin = String(pincode || "").replace(/\D/g, '').trim();
+        if (!cleanPin || cleanPin.length !== 6) {
+            return {
+                serviceable: false,
+                message: "Please enter a valid 6-digit PIN code."
+            };
+        }
+
+        const config = {
+            headers: {
+                'Authorization': `Token ${token}`
+            },
+            timeout: 10000
+        };
+
+        const response = await axios.get(`${DELHIVERY_BASE_URL}/c/api/pin-codes/json/?filter_codes=${encodeURIComponent(cleanPin)}`, config);
+        const data = response.data;
+
+        if (data && Array.isArray(data.delivery_codes) && data.delivery_codes.length > 0) {
+            const postalData = data.delivery_codes[0]?.postal_code;
+            if (postalData) {
+                const isPrepaid = postalData.pre_paid === 'Y';
+                const isCod = postalData.cod === 'Y' || postalData.cash === 'Y';
+
+                return {
+                    serviceable: isPrepaid || isCod,
+                    pincode: cleanPin,
+                    district: postalData.district || "",
+                    city: postalData.district || postalData.city || "",
+                    state: postalData.state_code || "",
+                    codAvailable: isCod,
+                    prepaidAvailable: isPrepaid,
+                    raw: postalData
+                };
+            }
+        }
+
+        return {
+            serviceable: false,
+            pincode: cleanPin,
+            message: `Delivery is currently not available to pincode ${cleanPin}.`
+        };
+
+    } catch (error) {
+        console.error("Delhivery Pincode Serviceability Error:", error.response?.data || error.message);
+        throw new Error(error.response?.data?.message || error.message || "Failed to check pincode serviceability.");
+    }
+};
+
+/**
+ * Calculate Delhivery Shipping Rate
+ * @param {Object} params - { originPin, destinationPin, weightGrams, paymentMode }
+ * @returns {Promise<Object>} Calculated shipping charge
+ */
+const calculateDelhiveryShippingRate = async ({ originPin, destinationPin, weightGrams = 500, paymentMode = 'Prepaid' }) => {
+    try {
+        const token = getDelhiveryToken();
+        if (!token) {
+            throw new Error("Delhivery API Token is missing in .env");
+        }
+
+        const origin = String(originPin || process.env.DELHIVERY_ORIGIN_PIN || '302020').replace(/\D/g, '').trim();
+        const destination = String(destinationPin || "").replace(/\D/g, '').trim();
+        const weight = Math.max(Number(weightGrams) || 500, 100);
+
+        if (!destination || destination.length !== 6) {
+            throw new Error("Valid 6-digit destination pincode is required to calculate rate.");
+        }
+
+        const config = {
+            headers: {
+                'Authorization': `Token ${token}`
+            },
+            params: {
+                md: 'S', // Surface mode
+                ss: 'Delivered',
+                d_pin: destination,
+                o_pin: origin,
+                cgm: weight,
+                pt: 'Pre-paid' // Base courier shipping rate
+            },
+            timeout: 10000
+        };
+
+        const response = await axios.get(`${DELHIVERY_BASE_URL}/api/kinko/v1/invoice/charges/.json`, config);
+        const data = response.data;
+
+        if (Array.isArray(data) && data.length > 0) {
+            const chargeObj = data[0];
+            const totalAmount = Number(chargeObj.total_amount) || 0;
+            const grossAmount = Number(chargeObj.gross_amount) || 0;
+
+            // Round shipping charge to nearest rupee or keep exact 2 decimals
+            const roundedCharge = Math.round(totalAmount);
+
+            return {
+                success: true,
+                shippingCharge: roundedCharge,
+                exactTotal: totalAmount,
+                grossAmount: grossAmount,
+                zone: chargeObj.zone || "",
+                chargedWeight: chargeObj.charged_weight || weight,
+                raw: chargeObj
+            };
+        }
+
+        throw new Error("Could not calculate rate from Delhivery.");
+
+    } catch (error) {
+        console.error("Delhivery Rate Calculation Error:", error.response?.data || error.message);
+        throw new Error(error.response?.data?.message || error.message || "Failed to calculate shipping rate.");
+    }
+};
+
 module.exports = {
     getDelhiveryToken,
     createDelhiveryOrder,
     cancelDelhiveryOrder,
     trackDelhiveryShipment,
-    parseDelhiveryStatus
+    parseDelhiveryStatus,
+    checkPincodeServiceability,
+    calculateDelhiveryShippingRate
 };
+

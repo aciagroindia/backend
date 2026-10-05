@@ -62,6 +62,22 @@ const orderSchema = new mongoose.Schema({
         code: String,
         discountAmount: { type: Number, default: 0 },
     },
+    shippingFee: {
+        type: Number,
+        default: 0,
+    },
+    shippingDetails: {
+        courier: { type: String, default: 'Delhivery' },
+        pincode: String,
+        city: String,
+        state: String,
+        charge: Number,
+        weightGrams: Number,
+    },
+    codFee: {
+        type: Number,
+        default: 0,
+    },
     totalAmount: {
         type: Number,
         required: true,
