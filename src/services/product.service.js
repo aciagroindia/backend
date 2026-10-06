@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Product = require("../models/Product");
 const { cloudinary } = require("../config/cloudinary");
 const createError = require("http-errors");
@@ -110,11 +111,9 @@ exports.getAllProducts = async (queryParams) => {
     query.category = category;
   }
   
-  // Filter by status if provided, or default to Active for store
+  // Filter by status if explicitly requested (e.g. status='Active' or status='Inactive')
   if (status && status !== 'all') {
     query.status = status;
-  } else if (!status) {
-    query.status = 'Active';
   }
 
   let apiQuery = Product.find(query);
@@ -149,14 +148,32 @@ exports.getProductById = async (id) => {
 GET SINGLE PRODUCT BY SLUG
 */
 exports.getProductBySlug = async (slug, includeInactive = false) => {
-  const product = await Product.findOne({ slug }).populate('category', 'name');
-  if (!product) {
-    throw createError(404, "Product not found");
+  if (!slug) {
+    throw createError(400, "Product slug is required");
   }
 
-  // If the product is Inactive and we are NOT looking for inactive ones (storefront view), deny access
-  if (product.status !== 'Active' && !includeInactive) {
-    throw createError(404, "Product not available"); // Use 404 to avoid leaking existence
+  let decodedSlug = slug;
+  try {
+    decodedSlug = decodeURIComponent(slug);
+  } catch (e) {}
+
+  const safeRegex = decodedSlug.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+
+  let product = await Product.findOne({
+    $or: [
+      { slug: slug },
+      { slug: decodedSlug },
+      { slug: { $regex: new RegExp(`^${safeRegex}$`, 'i') } }
+    ]
+  }).populate('category', 'name');
+
+  // If still not found, check if slug is a valid MongoDB ObjectId
+  if (!product && mongoose.Types.ObjectId.isValid(slug)) {
+    product = await Product.findById(slug).populate('category', 'name');
+  }
+
+  if (!product) {
+    throw createError(404, "Product not found");
   }
 
   return product;

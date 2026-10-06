@@ -25,10 +25,10 @@ exports.getProducts = async (req, res, next) => {
 // @route   GET /api/products/best-sellers
 exports.getBestSellers = async (req, res, next) => {
     try {
-        const products = await Product.find({ status: 'Active' })
+        const products = await Product.find({})
             .sort({ salesCount: -1 })
             .limit(10)
-            .select('_id name slug price image images rating salesCount');
+            .select('_id name slug price image images rating salesCount stock status');
 
         res.json({
             success: true,
@@ -52,11 +52,10 @@ exports.getRelatedProducts = async (req, res, next) => {
         // Fetch up to 4 products from the same category, excluding the current one
         const products = await Product.find({
             category: currentProduct.category,
-            status: 'Active',
             _id: { $ne: currentProduct._id }
         })
         .limit(4)
-        .select('_id name slug price image images rating');
+        .select('_id name slug price image images rating stock status');
 
         res.json({ success: true, products });
     } catch (error) {
