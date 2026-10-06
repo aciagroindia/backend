@@ -12,6 +12,8 @@ const packageSchema = new mongoose.Schema({
     regularPrice: { type: Number },
     discount: { type: Number },
     badge: { type: String }, // e.g., "BESTSELLER", "SAVE 10%"
+    image: { type: String }, // Optional variant specific image
+    publicId: { type: String },
 });
 
 const descriptionSectionSchema = new mongoose.Schema({

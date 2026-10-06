@@ -27,13 +27,16 @@ const uploadToCloudinary = (fileBuffer) => {
 CREATE PRODUCT
 */
 exports.createProduct = async (data, files) => {
+  const allFiles = files || [];
+  const galleryFiles = allFiles.filter(f => !f.fieldname || !f.fieldname.startsWith('package_image_'));
+
   // The route middleware ensures files exist, now we upload them here.
-  if (!files || files.length === 0) {
+  if (galleryFiles.length === 0) {
     throw createError(400, "At least one product image is required.");
   }
 
   const uploadResults = await Promise.all(
-    files.map(file => uploadToCloudinary(file.buffer))
+    galleryFiles.map(file => uploadToCloudinary(file.buffer))
   );
   const images = uploadResults.map(result => result.secure_url);
   const publicIds = uploadResults.map(result => result.public_id);
@@ -59,6 +62,16 @@ exports.createProduct = async (data, files) => {
       finalPackages = JSON.parse(data.packages);
     } catch (e) {
       finalPackages = [];
+    }
+  }
+
+  // Upload optional package/variant images
+  for (let i = 0; i < finalPackages.length; i++) {
+    const pkgFile = allFiles.find(f => f.fieldname === `package_image_${i}`);
+    if (pkgFile) {
+      const pkgUpload = await uploadToCloudinary(pkgFile.buffer);
+      finalPackages[i].image = pkgUpload.secure_url;
+      finalPackages[i].publicId = pkgUpload.public_id;
     }
   }
 
@@ -232,9 +245,12 @@ exports.updateProduct = async (id, data, files) => {
   }
 
   // --- 2. Handle New Image Uploads ---
-  if (files && files.length > 0) {
+  const allFiles = files || [];
+  const galleryFiles = allFiles.filter(f => !f.fieldname || !f.fieldname.startsWith('package_image_'));
+
+  if (galleryFiles.length > 0) {
     const uploadResults = await Promise.all(
-      files.map(file => uploadToCloudinary(file.buffer))
+      galleryFiles.map(file => uploadToCloudinary(file.buffer))
     );
     
     const newImageUrls = uploadResults.map(result => result.secure_url);
@@ -261,6 +277,17 @@ exports.updateProduct = async (id, data, files) => {
     if (typeof data.packages === 'string' && data.packages.trim()) {
       try { data.packages = JSON.parse(data.packages); } catch (e) { delete data.packages; }
     } else if (!Array.isArray(data.packages)) { delete data.packages; }
+
+    if (Array.isArray(data.packages)) {
+      for (let i = 0; i < data.packages.length; i++) {
+        const pkgFile = allFiles.find(f => f.fieldname === `package_image_${i}`);
+        if (pkgFile) {
+          const pkgUpload = await uploadToCloudinary(pkgFile.buffer);
+          data.packages[i].image = pkgUpload.secure_url;
+          data.packages[i].publicId = pkgUpload.public_id;
+        }
+      }
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(data, 'descriptionSections')) {
