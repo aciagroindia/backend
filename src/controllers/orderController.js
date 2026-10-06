@@ -104,6 +104,31 @@ exports.checkShippingAvailabilityAndRate = async (req, res, next) => {
   }
 };
 
+// Helper to determine exact variant/package price
+const resolveItemPriceAndVariant = (product, item) => {
+  let itemPrice = Number(item.price);
+  let itemVariant = (item.variant || "").trim();
+
+  if (product.packages && product.packages.length > 0) {
+    const matchedPkg = product.packages.find(p => 
+      (item.packageId && p._id.toString() === item.packageId.toString()) ||
+      (itemVariant && p.name.trim().toLowerCase() === itemVariant.toLowerCase()) ||
+      (item.price && Number(p.price) === Number(item.price))
+    );
+    if (matchedPkg) {
+      itemPrice = Number(matchedPkg.price);
+      itemVariant = matchedPkg.name.trim();
+    } else if (isNaN(itemPrice) || itemPrice <= 0) {
+      itemPrice = Number(product.packages[0].price);
+      itemVariant = product.packages[0].name.trim();
+    }
+  } else if (isNaN(itemPrice) || itemPrice <= 0) {
+    itemPrice = Number(product.price);
+  }
+
+  return { itemPrice, itemVariant };
+};
+
 // ==========================================
 // PREVIEW AUTOMATIC DISCOUNT & COUPON
 // ==========================================
@@ -139,10 +164,14 @@ exports.previewOrderDiscount = async (req, res, next) => {
       const product = productMap.get(pId);
       if (product) {
         const qty = item.quantity || item.qty || 1;
-        subtotal += product.price * qty;
+        const { itemPrice, itemVariant } = resolveItemPriceAndVariant(product, item);
+        subtotal += itemPrice * qty;
         validatedItems.push({
           productId: product._id,
-          price: product.price,
+          product: product._id,
+          name: product.name,
+          variant: itemVariant,
+          price: itemPrice,
           quantity: qty,
         });
       }
@@ -258,14 +287,18 @@ exports.createOrder = async (req, res, next) => {
         throw createError(400, `Not enough stock for ${product.name}. Only ${product.stock} available.`);
       }
 
-      serverCalculatedTotal += product.price * item.quantity;
+      const { itemPrice, itemVariant } = resolveItemPriceAndVariant(product, item);
+
+      serverCalculatedTotal += itemPrice * item.quantity;
 
       orderItems.push({
         product: product._id,
         name: product.name,
-        price: product.price,
+        price: itemPrice,
+        variant: itemVariant,
+        packageId: item.packageId || undefined,
         quantity: item.quantity,
-        image: product.image,
+        image: product.image || (product.images && product.images[0]) || "",
       });
     }
     // --- End Verification ---

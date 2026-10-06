@@ -8,6 +8,8 @@ const orderItemSchema = new mongoose.Schema({
     },
     name: String, // Added product name to order item
     image: String, // Added product image to order item
+    variant: String, // e.g. "500 ml" or "1000 ml"
+    packageId: String,
     quantity: {
         type: Number,
         required: true,

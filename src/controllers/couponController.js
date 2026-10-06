@@ -61,8 +61,28 @@ exports.applyCoupon = async (req, res, next) => {
             const pId = (item.productId || item.product || item._id || '').toString();
             const product = productMap.get(pId);
             if (product) {
-                const qty = item.quantity || item.qty || 1;
-                subtotal += product.price * qty;
+                const qty = Number(item.quantity || item.qty || 1);
+                let itemPrice = Number(product.price || 0);
+
+                if (Array.isArray(product.packages) && product.packages.length > 0) {
+                    let matchedPkg = null;
+                    if (item.packageId) {
+                        matchedPkg = product.packages.find(p => p._id && p._id.toString() === item.packageId.toString());
+                    }
+                    if (!matchedPkg && item.variant) {
+                        matchedPkg = product.packages.find(p => (p.name || '').trim().toLowerCase() === item.variant.trim().toLowerCase());
+                    }
+                    if (!matchedPkg && item.price !== undefined && item.price !== null) {
+                        matchedPkg = product.packages.find(p => Number(p.price) === Number(item.price));
+                    }
+                    if (matchedPkg) {
+                        itemPrice = Number(matchedPkg.price);
+                    } else if (product.packages[0] && product.packages[0].price !== undefined) {
+                        itemPrice = Number(product.packages[0].price);
+                    }
+                }
+
+                subtotal += itemPrice * qty;
             }
         }
 

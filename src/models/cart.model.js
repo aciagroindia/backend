@@ -14,6 +14,7 @@ const cartItemSchema = new mongoose.Schema({
   },
   image: String,
   variant: String,
+  packageId: String,
   slug: String,
 });
 

@@ -5,7 +5,7 @@ const createError = require("http-errors");
 const getCart = async (userId) => {
   let cart = await Cart.findOne({ user: userId }).populate(
     "items.product",
-    "name price images image slug stock"
+    "name price images image slug stock packages unit"
   );
 
   if (!cart) {
@@ -26,7 +26,7 @@ const getCart = async (userId) => {
 };
 
 const addToCart = async (userId, productData) => {
-  const { productId, quantity } = productData;
+  const { productId, quantity, variant, price, packageId } = productData;
 
   const product = await Product.findById(productId);
   if (!product) {
@@ -35,8 +35,28 @@ const addToCart = async (userId, productData) => {
 
   let cart = await getCart(userId);
 
+  let itemPrice = Number(price);
+  let itemVariant = (variant || "").trim();
+
+  if (product.packages && product.packages.length > 0) {
+    const matchedPkg = product.packages.find(p => 
+      (packageId && p._id.toString() === packageId.toString()) ||
+      (itemVariant && p.name.trim().toLowerCase() === itemVariant.toLowerCase()) ||
+      (itemPrice && Number(p.price) === itemPrice)
+    );
+    if (matchedPkg) {
+      itemPrice = Number(matchedPkg.price);
+      itemVariant = matchedPkg.name.trim();
+    } else if (isNaN(itemPrice) || itemPrice <= 0) {
+      itemPrice = Number(product.packages[0].price);
+      itemVariant = product.packages[0].name.trim();
+    }
+  } else if (isNaN(itemPrice) || itemPrice <= 0) {
+    itemPrice = Number(product.price);
+  }
+
   const existingItem = cart.items.find(
-    (item) => item.product._id.toString() === productId
+    (item) => item.product._id.toString() === productId && (item.variant || "").trim() === itemVariant
   );
 
   const productImg = (product.images && product.images.length > 0) ? product.images[0] : (product.image || "");
@@ -50,6 +70,7 @@ const addToCart = async (userId, productData) => {
       );
     }
     existingItem.quantity = newQuantity;
+    existingItem.price = itemPrice;
     if (!existingItem.image && productImg) {
       existingItem.image = productImg;
     }
@@ -63,15 +84,17 @@ const addToCart = async (userId, productData) => {
     cart.items.push({
       product: productId,
       name: product.name,
-      price: product.price,
+      price: itemPrice,
       quantity: quantity,
+      variant: itemVariant,
+      packageId: packageId || undefined,
       image: productImg,
       slug: product.slug,
     });
   }
 
   await cart.save();
-  await cart.populate("items.product", "name price images image slug stock");
+  await cart.populate("items.product", "name price images image slug stock packages unit");
 
   return cart;
 };
