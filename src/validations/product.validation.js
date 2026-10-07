@@ -16,6 +16,7 @@ const createProduct = Joi.object({
     faqs: Joi.string().optional().allow(''),
     packages: Joi.string().optional().allow(''),
     unit: Joi.string().optional().allow(''),
+    isBestSeller: Joi.alternatives().try(Joi.boolean(), Joi.string()).optional(),
 });
 
 const updateProductBody = Joi.object({
@@ -33,6 +34,7 @@ const updateProductBody = Joi.object({
     packages: Joi.string().optional().allow(''),
     unit: Joi.string().optional().allow(''),
     imagesToDelete: Joi.string().optional().allow(''),
+    isBestSeller: Joi.alternatives().try(Joi.boolean(), Joi.string()).optional(),
 }).min(1);
 
 const objectIdParam = Joi.object({

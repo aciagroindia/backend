@@ -8,6 +8,7 @@ const {
     createProduct, 
     updateProduct, 
     deleteProduct,
+    toggleBestSeller,
 } = require('../controllers/productController');
 const { protect, admin, optionalProtect } = require('../middlewares/authMiddleware');
 const { checkAdminAccess } = require('../middlewares/checkAdminAccess');
@@ -53,6 +54,13 @@ router.put(
     validate(updateProductBody),
     updateProduct
 );
+router.patch(
+    '/:id/toggle-bestseller',
+    adminOnly,
+    validate(objectIdParam, 'params'),
+    toggleBestSeller
+);
+
 router.delete(
     '/:id', 
     adminOnly, 

@@ -94,6 +94,8 @@ exports.createProduct = async (data, files) => {
     finalDescription = finalDescriptionSections.map(s => `${s.title}\n${s.content}`).join('\n\n');
   }
 
+  const isBestSeller = data.isBestSeller === true || data.isBestSeller === 'true';
+
   const product = new Product({
     ...data,
     slug,
@@ -102,7 +104,8 @@ exports.createProduct = async (data, files) => {
     faqs: finalFaqs,
     packages: finalPackages,
     descriptionSections: finalDescriptionSections,
-    description: finalDescription
+    description: finalDescription,
+    isBestSeller,
   });
 
   await product.save();
@@ -304,6 +307,10 @@ exports.updateProduct = async (id, data, files) => {
         data.description = data.descriptionSections.map(s => `${s.title}\n${s.content}`).join('\n\n');
       }
     }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'isBestSeller')) {
+    data.isBestSeller = data.isBestSeller === true || data.isBestSeller === 'true';
   }
 
   Object.assign(product, data);

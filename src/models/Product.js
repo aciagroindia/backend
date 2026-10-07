@@ -45,7 +45,9 @@ const productSchema = new mongoose.Schema({
     rating: { type: Number, default: 0 },
     numReviews: { type: Number, default: 0 },
     numSales: { type: Number, default: 0 }, // For "Sort by: Best Selling"
-    salesCount: { type: Number, default: 0 }, // For homepage best sellers
+    salesCount: { type: Number, default: 0 }, // For sales tracking
+    isBestSeller: { type: Boolean, default: false }, // Admin toggle for Best Selling section
+    bestSellerOrder: { type: Number, default: 0 },
 }, { timestamps: true });
 
 // Virtual for the main image (the first in the array) for backward compatibility

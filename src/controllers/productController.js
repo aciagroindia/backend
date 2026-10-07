@@ -21,18 +21,60 @@ exports.getProducts = async (req, res, next) => {
     }
 };
 
-// @desc    Get Top 10 Best Selling Products
+// @desc    Get Top 12 Best Selling Products (Prioritizes Admin Choices)
 // @route   GET /api/products/best-sellers
 exports.getBestSellers = async (req, res, next) => {
     try {
-        const products = await Product.find({})
-            .sort({ salesCount: -1 })
-            .limit(10)
-            .select('_id name slug price image images rating salesCount stock status');
+        // 1. Fetch products explicitly marked as Best Sellers by Admin
+        let products = await Product.find({ 
+            status: 'Active', 
+            isBestSeller: true 
+        })
+        .sort({ bestSellerOrder: 1, updatedAt: -1 })
+        .limit(12)
+        .select('_id name slug price image images rating salesCount stock status isBestSeller packages unit');
+
+        // 2. If fewer than 12 manually selected, backfill with top selling / highest rated products
+        if (products.length < 12) {
+            const existingIds = products.map(p => p._id);
+            const remainingCount = 12 - products.length;
+
+            const autoProducts = await Product.find({
+                _id: { $nin: existingIds },
+                status: 'Active',
+            })
+            .sort({ salesCount: -1, rating: -1, createdAt: -1 })
+            .limit(remainingCount)
+            .select('_id name slug price image images rating salesCount stock status isBestSeller packages unit');
+
+            products = [...products, ...autoProducts];
+        }
 
         res.json({
             success: true,
             products,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// @desc    Toggle Best Seller status for product
+// @route   PATCH /api/products/:id/toggle-bestseller
+exports.toggleBestSeller = async (req, res, next) => {
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) {
+            throw createError(404, "Product not found");
+        }
+        product.isBestSeller = !product.isBestSeller;
+        await product.save();
+
+        res.json({
+            success: true,
+            message: `Product ${product.isBestSeller ? 'marked as' : 'removed from'} Best Seller`,
+            isBestSeller: product.isBestSeller,
+            product,
         });
     } catch (error) {
         next(error);
