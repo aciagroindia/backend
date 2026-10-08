@@ -21,11 +21,12 @@ exports.createBanner = async (req, res, next) => {
             throw createError(400, "Please upload an image");
         }
 
-        const { title, order, status } = req.body;
+        const { title, order, status, link } = req.body;
         const newBanner = await Banner.create({
-            title,
-            order,
-            status,
+            title: title ? title.trim() : '',
+            order: Number(order) || 0,
+            status: status || 'Active',
+            link: link ? link.trim() : '',
             imageUrl: req.file.path,
             publicId: req.file.filename // req.file.filename contains the public_id
         });
@@ -38,7 +39,7 @@ exports.createBanner = async (req, res, next) => {
 // @desc    Update Banner (Handle text and optional Image)
 exports.updateBanner = async (req, res, next) => {
     try {
-        const { title, order, status } = req.body;
+        const { title, order, status, link } = req.body;
         const banner = await Banner.findById(req.params.id);
 
         if (!banner) {
@@ -48,7 +49,11 @@ exports.updateBanner = async (req, res, next) => {
         if (req.file) {
             // Delete the OLD image from Cloudinary
             if (banner.publicId) {
-                await cloudinary.uploader.destroy(banner.publicId);
+                try {
+                    await cloudinary.uploader.destroy(banner.publicId);
+                } catch (cErr) {
+                    console.warn("Cloudinary delete old image warning:", cErr.message);
+                }
             }
             
             // Update with NEW Cloudinary data
@@ -56,9 +61,10 @@ exports.updateBanner = async (req, res, next) => {
             banner.publicId = req.file.filename;
         }
 
-        banner.title = title || banner.title;
-        banner.order = order || banner.order;
-        banner.status = status || banner.status;
+        if (title !== undefined) banner.title = title.trim();
+        if (order !== undefined) banner.order = Number(order);
+        if (status !== undefined) banner.status = status;
+        if (link !== undefined) banner.link = (link || '').trim();
 
         const updatedBanner = await banner.save();
         res.json(updatedBanner);

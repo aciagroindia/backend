@@ -23,10 +23,10 @@ exports.createBulkBanner = async (req, res, next) => {
 
         const { title, order, status, link } = req.body;
         const newBanner = await BulkBanner.create({
-            title,
+            title: title ? title.trim() : '',
             order: Number(order) || 0,
             status: status || 'Active',
-            link: link || '',
+            link: link ? link.trim() : '',
             imageUrl: req.file.path,
             publicId: req.file.filename // req.file.filename contains the public_id from Cloudinary
         });
@@ -61,10 +61,10 @@ exports.updateBulkBanner = async (req, res, next) => {
             banner.publicId = req.file.filename;
         }
 
-        if (title !== undefined) banner.title = title;
+        if (title !== undefined) banner.title = title.trim();
         if (order !== undefined) banner.order = Number(order);
         if (status !== undefined) banner.status = status;
-        if (link !== undefined) banner.link = link;
+        if (link !== undefined) banner.link = (link || '').trim();
 
         const updatedBanner = await banner.save();
         res.json(updatedBanner);
