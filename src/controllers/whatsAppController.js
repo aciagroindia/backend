@@ -3,10 +3,24 @@ const createError = require('http-errors');
 
 // Default fallback configuration
 const DEFAULT_CONFIG = {
-    phoneNumber: '919876543210',
+    phoneNumber: '917597920642',
     message: 'Hello ACI Agro Solutions, I would like to inquire about your ayurvedic products.',
     customUrl: '',
     isEnabled: true
+};
+
+const sanitizePhone = (phone) => {
+    if (!phone) return '917597920642';
+    let digits = String(phone).replace(/\D/g, '');
+    while (digits.startsWith('9191') && digits.length > 12) {
+        digits = digits.substring(2);
+    }
+    if (digits.length === 10) {
+        digits = '91' + digits;
+    } else if (digits.length === 11 && digits.startsWith('0')) {
+        digits = '91' + digits.substring(1);
+    }
+    return digits || '917597920642';
 };
 
 // @desc    Get WhatsApp configuration (Public)
@@ -16,6 +30,8 @@ exports.getWhatsAppConfig = async (req, res, next) => {
         let config = await WhatsAppConfig.findOne({}).lean();
         if (!config) {
             config = DEFAULT_CONFIG;
+        } else if (config.phoneNumber) {
+            config.phoneNumber = sanitizePhone(config.phoneNumber);
         }
 
         res.json({
@@ -34,7 +50,9 @@ exports.updateWhatsAppConfig = async (req, res, next) => {
         const { phoneNumber, message, customUrl, isEnabled } = req.body;
 
         const updateData = {};
-        if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber.trim();
+        if (phoneNumber !== undefined) {
+            updateData.phoneNumber = sanitizePhone(phoneNumber);
+        }
         if (message !== undefined) updateData.message = message.trim();
         if (customUrl !== undefined) updateData.customUrl = customUrl.trim();
         if (isEnabled !== undefined) updateData.isEnabled = Boolean(isEnabled);

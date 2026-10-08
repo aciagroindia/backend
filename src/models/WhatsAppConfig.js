@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const whatsAppConfigSchema = new mongoose.Schema({
     phoneNumber: {
         type: String,
-        default: '919876543210',
+        default: '917597920642',
         trim: true
     },
     message: {
