@@ -102,3 +102,53 @@ exports.getUserProfile = async (req, res, next) => {
         });
     } catch (error) { next(error); }
 };
+
+// 5. VERIFY PHONE FOR FORGOT PASSWORD
+exports.verifyPhone = async (req, res, next) => {
+    try {
+        const { phone } = req.body;
+        const user = await User.findOne({ phone });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                notRegistered: true,
+                message: "This mobile number is not registered with us."
+            });
+        }
+
+        res.json({
+            success: true,
+            message: "Mobile number verified.",
+            data: {
+                name: user.name,
+                phone: user.phone
+            }
+        });
+    } catch (error) { next(error); }
+};
+
+// 6. RESET PASSWORD VIA PHONE
+exports.resetPassword = async (req, res, next) => {
+    try {
+        const { phone, newPassword, confirmPassword } = req.body;
+
+        if (newPassword !== confirmPassword) {
+            throw createError(400, "New password and confirm password do not match.");
+        }
+
+        const user = await User.findOne({ phone });
+        if (!user) {
+            throw createError(404, "User not found.");
+        }
+
+        // Setting password triggers pre('save') bcrypt hashing
+        user.password = newPassword;
+        await user.save();
+
+        res.json({
+            success: true,
+            message: "Password updated successfully. Please login with your new password."
+        });
+    } catch (error) { next(error); }
+};
