@@ -49,6 +49,18 @@ const orderSchema = new mongoose.Schema({
     subtotal: {
         type: Number,
     },
+    comboDiscount: {
+        type: Number,
+        default: 0,
+    },
+    appliedCombos: [{
+        categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+        categoryName: String,
+        quantity: Number,
+        fixedPrice: Number,
+        normalPrice: Number,
+        savings: Number,
+    }],
     discountAmount: {
         type: Number,
         default: 0,

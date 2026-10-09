@@ -19,6 +19,9 @@ const {
 const {
   calculateBestAutomaticDiscount,
 } = require("../services/discountCalculation.service");
+const {
+  calculateComboDiscounts,
+} = require("../services/comboPricing.service");
 const couponService = require("../services/coupon.service");
 const {
   trackDelhiveryShipment,
@@ -177,10 +180,13 @@ exports.previewOrderDiscount = async (req, res, next) => {
       }
     }
 
+    const comboResult = await calculateComboDiscounts(validatedItems);
+    const subtotalAfterCombo = comboResult.comboSubtotal;
+
     const discountResult = await calculateBestAutomaticDiscount(
       req.user ? req.user.id : null,
       validatedItems,
-      subtotal
+      subtotalAfterCombo
     );
 
     let couponDiscount = 0;
@@ -188,7 +194,7 @@ exports.previewOrderDiscount = async (req, res, next) => {
 
     if (couponCode && couponCode.trim()) {
       try {
-        const remainingSubtotal = Math.max(0, subtotal - discountResult.discountAmount);
+        const remainingSubtotal = Math.max(0, subtotalAfterCombo - discountResult.discountAmount);
         const couponResult = await couponService.validateAndApplyCoupon(
           couponCode,
           req.user ? req.user.id : null,
@@ -240,12 +246,16 @@ exports.previewOrderDiscount = async (req, res, next) => {
     }
 
     const codFee = paymentMethod === 'COD' ? 30 : 0;
-    const finalTotal = Math.max(0, Math.round((subtotal - discountResult.discountAmount - couponDiscount + shippingFee + codFee) * 100) / 100);
+    const finalTotal = Math.max(0, Math.round((subtotalAfterCombo - discountResult.discountAmount - couponDiscount + shippingFee + codFee) * 100) / 100);
 
     res.json({
       success: true,
       data: {
         ...discountResult,
+        subtotal: subtotal,
+        comboDiscount: comboResult.comboDiscount,
+        comboSubtotal: comboResult.comboSubtotal,
+        appliedCombos: comboResult.appliedCombos,
         couponDiscount,
         appliedCoupon,
         shippingFee,
@@ -303,11 +313,15 @@ exports.createOrder = async (req, res, next) => {
     }
     // --- End Verification ---
 
+    // --- Server-Side Combo Pricing Evaluation ---
+    const comboResult = await calculateComboDiscounts(orderItems);
+    const subtotalAfterCombo = comboResult.comboSubtotal;
+
     // --- Server-Side Automatic Discount Evaluation ---
     const discountResult = await calculateBestAutomaticDiscount(
       req.user ? req.user.id : null,
       orderItems,
-      serverCalculatedTotal
+      subtotalAfterCombo
     );
 
     // --- Server-Side Coupon Evaluation (if provided) ---
@@ -315,7 +329,7 @@ exports.createOrder = async (req, res, next) => {
     let couponDiscount = 0;
 
     if (couponCode && couponCode.trim()) {
-      const remainingSubtotal = Math.max(0, serverCalculatedTotal - discountResult.discountAmount);
+      const remainingSubtotal = Math.max(0, subtotalAfterCombo - discountResult.discountAmount);
       const couponResult = await couponService.validateAndApplyCoupon(
         couponCode,
         req.user ? req.user.id : null,
@@ -361,7 +375,7 @@ exports.createOrder = async (req, res, next) => {
 
     const finalPayableTotal = Math.max(
       0,
-      Math.round((serverCalculatedTotal - discountResult.discountAmount - couponDiscount + serverShippingCharge + codFee) * 100) / 100
+      Math.round((subtotalAfterCombo - discountResult.discountAmount - couponDiscount + serverShippingCharge + codFee) * 100) / 100
     );
 
     const shippingData = {
@@ -383,6 +397,8 @@ exports.createOrder = async (req, res, next) => {
       orderItems,
       shippingInfo: shippingData,
       subtotal: serverCalculatedTotal,
+      comboDiscount: comboResult.comboDiscount,
+      appliedCombos: comboResult.appliedCombos,
       discountAmount: discountResult.discountAmount,
       appliedDiscount: discountResult.appliedDiscount,
       coupon: couponData,

@@ -32,6 +32,26 @@ exports.getCategoryBySlug = async (req, res, next) => {
 };
 
 
+const parseComboRules = (input) => {
+  if (!input) return [];
+  let rules = input;
+  if (typeof input === 'string') {
+    try {
+      rules = JSON.parse(input);
+    } catch (e) {
+      rules = [];
+    }
+  }
+  if (!Array.isArray(rules)) return [];
+  return rules
+    .map(r => ({
+      quantity: Number(r.quantity),
+      fixedPrice: Number(r.fixedPrice)
+    }))
+    .filter(r => !isNaN(r.quantity) && r.quantity >= 2 && !isNaN(r.fixedPrice) && r.fixedPrice > 0)
+    .sort((a, b) => b.quantity - a.quantity);
+};
+
 // @desc Create Category
 exports.createCategory = async (req, res, next) => {
   try {
@@ -39,7 +59,7 @@ exports.createCategory = async (req, res, next) => {
       throw createError(400, 'Category image is required.');
     }
 
-    const { name, description, status } = req.body;
+    const { name, description, status, comboRules } = req.body;
     
     // Check if category already exists (Prevent duplicates)
     const exists = await Category.findOne({ name });
@@ -54,6 +74,7 @@ exports.createCategory = async (req, res, next) => {
       slug,
       description,
       status: status || 'Active',
+      comboRules: parseComboRules(comboRules),
       image: req.file.path,       // Cloudinary URL
       publicId: req.file.filename // Cloudinary Public ID
     });
@@ -99,6 +120,10 @@ exports.updateCategory = async (req, res, next) => {
 
     if (req.body.status !== undefined) {
       category.status = req.body.status;
+    }
+
+    if (req.body.comboRules !== undefined) {
+      category.comboRules = parseComboRules(req.body.comboRules);
     }
 
     const updatedCategory = await category.save();

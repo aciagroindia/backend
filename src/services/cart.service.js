@@ -5,7 +5,7 @@ const createError = require("http-errors");
 const getCart = async (userId) => {
   let cart = await Cart.findOne({ user: userId }).populate(
     "items.product",
-    "name price images image slug stock packages unit"
+    "name price images image slug stock packages unit category"
   );
 
   if (!cart) {
@@ -94,7 +94,7 @@ const addToCart = async (userId, productData) => {
   }
 
   await cart.save();
-  await cart.populate("items.product", "name price images image slug stock packages unit");
+  await cart.populate("items.product", "name price images image slug stock packages unit category");
 
   return cart;
 };

@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const comboRuleSchema = new mongoose.Schema({
+    quantity: { type: Number, required: true, min: 2 },
+    fixedPrice: { type: Number, required: true, min: 1 }
+}, { _id: false });
+
 const categorySchema = new mongoose.Schema({
     name: { type: String, required: true, trim: true },
     slug: { type: String, required: true, unique: true, lowercase: true },
@@ -10,7 +15,8 @@ const categorySchema = new mongoose.Schema({
         type: String, 
         enum: ['Active', 'Inactive'], 
         default: 'Active' 
-    }
+    },
+    comboRules: [comboRuleSchema]
 }, { timestamps: true });
 
 module.exports = mongoose.model('Category', categorySchema);
