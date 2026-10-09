@@ -96,8 +96,38 @@ exports.createProduct = async (data, files) => {
 
   const isBestSeller = data.isBestSeller === true || data.isBestSeller === 'true';
 
+  let finalCategories = [];
+  let isAllCategories = data.isAllCategories === true || data.isAllCategories === 'true';
+
+  if (data.categories) {
+    if (Array.isArray(data.categories)) {
+      finalCategories = data.categories;
+    } else if (typeof data.categories === 'string' && data.categories.trim()) {
+      try {
+        finalCategories = JSON.parse(data.categories);
+      } catch (e) {
+        finalCategories = [data.categories];
+      }
+    }
+  }
+
+  if (finalCategories.includes('all') || finalCategories.includes('ALL')) {
+    isAllCategories = true;
+    finalCategories = finalCategories.filter(c => c !== 'all' && c !== 'ALL');
+  }
+
+  finalCategories = finalCategories.filter(c => mongoose.Types.ObjectId.isValid(c));
+
+  let primaryCategory = data.category;
+  if (!primaryCategory || !mongoose.Types.ObjectId.isValid(primaryCategory)) {
+    primaryCategory = finalCategories.length > 0 ? finalCategories[0] : undefined;
+  }
+
   const product = new Product({
     ...data,
+    category: primaryCategory,
+    categories: finalCategories,
+    isAllCategories: isAllCategories,
     slug,
     images: images,
     publicIds: publicIds,
@@ -124,7 +154,11 @@ exports.getAllProducts = async (queryParams) => {
     query._id = { $in: ids.split(',') };
   }
   if (category) {
-    query.category = category;
+    query.$or = [
+      { category: category },
+      { categories: category },
+      { isAllCategories: true }
+    ];
   }
   
   // Filter by status if explicitly requested (e.g. status='Active' or status='Inactive')
@@ -144,7 +178,7 @@ exports.getAllProducts = async (queryParams) => {
     apiQuery = apiQuery.sort({ createdAt: -1 });
   }
 
-  const products = await apiQuery.populate('category', 'name');
+  const products = await apiQuery.populate('category', 'name').populate('categories', 'name');
   return products;
 };
 
@@ -311,6 +345,42 @@ exports.updateProduct = async (id, data, files) => {
 
   if (Object.prototype.hasOwnProperty.call(data, 'isBestSeller')) {
     data.isBestSeller = data.isBestSeller === true || data.isBestSeller === 'true';
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'categories') || Object.prototype.hasOwnProperty.call(data, 'isAllCategories')) {
+    let finalCategories = [];
+    let isAllCategories = data.isAllCategories === true || data.isAllCategories === 'true';
+
+    if (data.categories) {
+      if (Array.isArray(data.categories)) {
+        finalCategories = data.categories;
+      } else if (typeof data.categories === 'string' && data.categories.trim()) {
+        try {
+          finalCategories = JSON.parse(data.categories);
+        } catch (e) {
+          finalCategories = [data.categories];
+        }
+      }
+    }
+
+    if (finalCategories.includes('all') || finalCategories.includes('ALL')) {
+      isAllCategories = true;
+      finalCategories = finalCategories.filter(c => c !== 'all' && c !== 'ALL');
+    }
+
+    finalCategories = finalCategories.filter(c => mongoose.Types.ObjectId.isValid(c));
+    product.isAllCategories = isAllCategories;
+    product.categories = finalCategories;
+
+    if (data.category && mongoose.Types.ObjectId.isValid(data.category)) {
+      product.category = data.category;
+    } else if (finalCategories.length > 0) {
+      product.category = finalCategories[0];
+    }
+
+    delete data.categories;
+    delete data.isAllCategories;
+    delete data.category;
   }
 
   Object.assign(product, data);

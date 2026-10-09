@@ -32,6 +32,14 @@ const productSchema = new mongoose.Schema({
         ref: 'Category', 
         required: true 
     },
+    categories: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category'
+    }],
+    isAllCategories: {
+        type: Boolean,
+        default: false
+    },
     images: { type: [String], required: true },
     publicIds: { type: [String], required: true },
     stock: { type: Number, default: 0 },

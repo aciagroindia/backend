@@ -39,7 +39,7 @@ const calculateComboDiscounts = async (items = []) => {
 
     // 1. Fetch DB products and populate category details
     const productIds = items.map(item => (item.productId || item.product || item._id || '').toString()).filter(Boolean);
-    const productsFromDB = await Product.find({ _id: { $in: productIds } }).populate('category');
+    const productsFromDB = await Product.find({ _id: { $in: productIds } }).populate('category').populate('categories');
     const productMap = new Map(productsFromDB.map(p => [p._id.toString(), p]));
 
     let originalSubtotal = 0;
@@ -57,8 +57,21 @@ const calculateComboDiscounts = async (items = []) => {
       const itemPrice = resolveItemPrice(product, item);
       originalSubtotal += itemPrice * qty;
 
-      const category = product.category;
-      if (category && category.status === 'Active' && Array.isArray(category.comboRules) && category.comboRules.length > 0) {
+      const eligibleCategories = [];
+      if (product.category && product.category.status === 'Active' && Array.isArray(product.category.comboRules) && product.category.comboRules.length > 0) {
+        eligibleCategories.push(product.category);
+      }
+      if (Array.isArray(product.categories)) {
+        for (const cat of product.categories) {
+          if (cat && cat.status === 'Active' && Array.isArray(cat.comboRules) && cat.comboRules.length > 0) {
+            if (!eligibleCategories.some(ec => ec._id.toString() === cat._id.toString())) {
+              eligibleCategories.push(cat);
+            }
+          }
+        }
+      }
+
+      for (const category of eligibleCategories) {
         const catId = category._id.toString();
         if (!categoryGroups.has(catId)) {
           categoryGroups.set(catId, {
