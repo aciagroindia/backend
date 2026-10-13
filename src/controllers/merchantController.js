@@ -103,7 +103,7 @@ exports.testSync = asyncHandler(async (req, res) => {
     });
   }
 
-  const count = Number(req.body.count) || 2;
+  const count = Number(req.body?.count || req.query?.count) || 2;
   const result = await merchantSyncService.syncTestProducts(count);
   res.json({
     success: true,
