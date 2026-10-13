@@ -139,6 +139,20 @@ exports.createProduct = async (data, files) => {
   });
 
   await product.save();
+
+  // Asynchronously trigger Google Merchant Center sync if enabled
+  setImmediate(() => {
+    try {
+      const { isSyncEnabled } = require('../config/googleMerchant');
+      if (isSyncEnabled()) {
+        const merchantSyncService = require('./merchantSync.service');
+        merchantSyncService.syncSingleProduct(product._id);
+      }
+    } catch (e) {
+      console.warn('[GoogleMerchant] Background sync trigger error on create:', e.message);
+    }
+  });
+
   return product;
 };
 
@@ -390,6 +404,20 @@ exports.updateProduct = async (id, data, files) => {
   // --- 4. Save and Return ---
   try {
     const updatedDoc = await product.save();
+
+    // Asynchronously trigger Google Merchant Center sync on update if enabled
+    setImmediate(() => {
+      try {
+        const { isSyncEnabled } = require('../config/googleMerchant');
+        if (isSyncEnabled()) {
+          const merchantSyncService = require('./merchantSync.service');
+          merchantSyncService.syncSingleProduct(updatedDoc._id);
+        }
+      } catch (e) {
+        console.warn('[GoogleMerchant] Background sync trigger error on update:', e.message);
+      }
+    });
+
     return updatedDoc;
   } catch (error) {
     console.error("❌ Mongoose Save Error:", error.message);
@@ -413,5 +441,19 @@ exports.deleteProduct = async (id) => {
   }
 
   await product.deleteOne();
+
+  // Asynchronously trigger Google Merchant Center removal if enabled
+  setImmediate(() => {
+    try {
+      const { isSyncEnabled } = require('../config/googleMerchant');
+      if (isSyncEnabled()) {
+        const merchantSyncService = require('./merchantSync.service');
+        merchantSyncService.deleteSingleProduct(id);
+      }
+    } catch (e) {
+      console.warn('[GoogleMerchant] Background delete trigger error:', e.message);
+    }
+  });
+
   return { message: "Product deleted successfully" };
 };
