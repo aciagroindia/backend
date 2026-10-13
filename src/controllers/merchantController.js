@@ -136,10 +136,53 @@ exports.triggerFullSync = asyncHandler(async (req, res) => {
 
 /**
  * @desc Serves Google Shopping RSS 2.0 XML Feed
- * @route GET /api/products/merchant-feed.xml
+ * @route GET /api/merchant/feed.xml
  */
 exports.getXmlFeed = asyncHandler(async (req, res) => {
   const xml = await merchantSyncService.generateXmlFeed();
   res.set('Content-Type', 'application/xml; charset=utf-8');
   res.send(xml);
 });
+
+/**
+ * @desc Public Read-Only Health & Connection Verification (Zero secrets exposed)
+ * @route GET /api/merchant/health
+ */
+exports.getHealth = asyncHandler(async (req, res) => {
+  const configured = isConfigured();
+  const syncEnabled = isSyncEnabled();
+  let googleStatus = 'Not configured in environment';
+  let dataSourceDetails = null;
+
+  if (configured) {
+    try {
+      const { getDataSourcesClient } = require('../config/googleMerchant');
+      const dataSourcesClient = getDataSourcesClient();
+      const dsRes = await dataSourcesClient.accounts.dataSources.get({
+        name: DATA_SOURCE_RESOURCE,
+      });
+      googleStatus = 'CONNECTED_SUCCESSFULLY';
+      dataSourceDetails = {
+        name: dsRes.data.name,
+        displayName: dsRes.data.displayName,
+      };
+    } catch (err) {
+      googleStatus = `CONNECTION_FAILED: ${err.response?.data?.error?.message || err.message}`;
+    }
+  }
+
+  res.json({
+    success: true,
+    message: 'Google Merchant Integration Health Check',
+    data: {
+      configured,
+      syncEnabled,
+      merchantCenterId: MERCHANT_CENTER_ID,
+      dataSourceId: DATA_SOURCE_ID,
+      authMethod: process.env.GOOGLE_CLIENT_ID ? 'OAuth2' : (process.env.GOOGLE_SERVICE_ACCOUNT_KEY ? 'ServiceAccount' : 'None'),
+      googleStatus,
+      dataSource: dataSourceDetails,
+    },
+  });
+});
+
