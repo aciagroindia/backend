@@ -39,6 +39,8 @@ const policyRoutes = require("./src/routes/policyRoutes");
 const whatsAppRoutes = require("./src/routes/whatsAppRoutes");
 const whyChooseUsRoutes = require("./src/routes/whyChooseUsRoutes");
 const aboutPageRoutes = require("./src/routes/aboutPageRoutes");
+const merchantRoutes = require("./src/routes/merchantRoutes");
+const { initMerchantCron } = require("./src/services/merchantCron.service");
 
 // Load environment variables
 dotenv.config();
@@ -88,6 +90,7 @@ app.use("/api/policies", policyRoutes);
 app.use("/api/config", whatsAppRoutes);
 app.use("/api/why-choose-us", whyChooseUsRoutes);
 app.use("/api/about-page", aboutPageRoutes);
+app.use("/api/merchant", merchantRoutes);
 
 // --- Admin Routes ---
 // Note: More specific routes must be declared before less specific ones.
@@ -107,6 +110,7 @@ app.use("/api/admin/why-choose-us", whyChooseUsRoutes);
 app.use("/api/admin/about-page", aboutPageRoutes);
 app.use("/api/admin/inquiries", adminInquiryRoutes); // Mount new admin inquiry routes
 app.use("/api/admin/notifications", notificationRoutes);
+app.use("/api/admin/merchant", merchantRoutes);
 app.use("/api/admin", adminRequestRoutes); // This should be last for /api/admin
 
 // This route is for frontend inconsistencies, handles non-/api prefixed admin routes
@@ -156,4 +160,5 @@ const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  initMerchantCron();
 });
