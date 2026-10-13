@@ -26,13 +26,18 @@ function isSyncEnabled() {
 function getAuthClient() {
   // Option 1: OAuth 2.0 (Recommended for Render & when GCP service account keys are blocked)
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN) {
+    const clientId = String(process.env.GOOGLE_CLIENT_ID).trim();
+    const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET).trim();
+    const redirectUri = String(process.env.GOOGLE_REDIRECT_URI || 'https://developers.google.com/oauthplayground').trim();
+    const refreshToken = String(process.env.GOOGLE_REFRESH_TOKEN).trim();
+
     const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI || 'https://developers.google.com/oauthplayground'
+      clientId,
+      clientSecret,
+      redirectUri
     );
     oauth2Client.setCredentials({
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+      refresh_token: refreshToken,
     });
     return oauth2Client;
   }
