@@ -1,29 +1,44 @@
 const BulkOrder = require("../models/BulkOrder");
 const createError = require("http-errors");
 
-
 // CREATE BULK ORDER REQUEST
 exports.createBulkOrder = async (req, res, next) => {
   try {
-    const { firstName, email, phone, message } = req.body;
+    const {
+      firstName,
+      companyName,
+      email,
+      phone,
+      productRequired,
+      quantity,
+      packagingSize,
+      packagingType,
+      manufacturingRequirement,
+      message,
+    } = req.body;
 
     const bulkOrder = await BulkOrder.create({
       firstName,
+      companyName,
       email,
       phone,
-      message,
+      productRequired,
+      quantity,
+      packagingSize,
+      packagingType,
+      manufacturingRequirement,
+      message: message || "",
     });
 
     res.status(201).json({
       success: true,
-      message: "Bulk order request submitted",
+      message: "Bulk order request submitted successfully",
       data: bulkOrder,
     });
   } catch (error) {
     next(error);
   }
 };
-
 
 // GET ALL BULK ORDERS (ADMIN)
 exports.getBulkOrders = async (req, res, next) => {
