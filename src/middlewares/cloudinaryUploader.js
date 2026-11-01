@@ -52,8 +52,12 @@ const uploadToCloudinary = (req, res, next) => {
                         console.error('Cloudinary Upload Error:', error);
                         return reject(createError(500, 'Image could not be uploaded.'));
                     }
-                    fileObj.path = result.secure_url;
-                    fileObj.filename = result.public_id;
+                    fileObj.path =
+                    result.resource_type === 'image'
+                   ? result.secure_url.replace('/upload/', '/upload/f_auto,q_auto/')
+                   : result.secure_url;
+
+                   fileObj.filename = result.public_id;
                     resolve(result);
                 }
             );
