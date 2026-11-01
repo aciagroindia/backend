@@ -10,10 +10,12 @@ const createError = require('http-errors');
 const uploadToCloudinary = (req, res, next) => {
     // If there's no file to upload (e.g., on an update without a new image),
     // just skip to the next middleware.
-    if (!req.file) {
-        return next();
-    }
-
+   if (
+    !req.file &&
+    (!req.files || req.files.length === 0)
+) {
+    return next();
+}
     // Dynamically set folder based on the route
     let folder;
     if (req.originalUrl.includes('/api/categories')) {
