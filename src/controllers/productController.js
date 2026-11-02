@@ -1,4 +1,3 @@
-
 // @desc    Get Related Products (People Also Bought)
 // @route   GET /api/products/related/:slug
 exports.getRelatedProducts = async (req, res, next) => {
