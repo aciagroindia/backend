@@ -58,6 +58,16 @@ const articleSchema = new mongoose.Schema({
         index: true
     },
     faqs: [faqSchema],
+        buttonText: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    buttonUrl: {
+        type: String,
+        trim: true,
+        default: ''
+    },
     views: { 
         type: Number, 
         default: 0 
