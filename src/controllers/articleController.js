@@ -88,17 +88,19 @@ exports.getArticleBySlug = async (req, res, next) => {
 // @route   POST /api/articles
 exports.createArticle = async (req, res, next) => {
     try {
-        let { 
-            title, 
-            slug, 
-            breadcrumbTitle, 
-            description, 
-            content, 
-            author, 
-            category, 
-            tags, 
-            status, 
-            faqs 
+        let {
+            title,
+            slug,
+            breadcrumbTitle,
+            description,
+            content,
+            author,
+            category,
+            tags,
+            status,
+            faqs,
+            buttonText,
+            buttonUrl
         } = req.body;
 
         if (!title || !description || !content) {
@@ -158,7 +160,9 @@ exports.createArticle = async (req, res, next) => {
             category: category || 'Ayurvedic Wellness',
             tags: parsedTags,
             status: status || 'Published',
-            faqs: parsedFaqs
+            faqs: parsedFaqs,
+            buttonText: buttonText || '',
+            buttonUrl: buttonUrl || ''
         });
 
         res.status(201).json({
@@ -180,17 +184,19 @@ exports.updateArticle = async (req, res, next) => {
             throw createError(404, 'Article not found');
         }
 
-        let { 
-            title, 
-            slug, 
-            breadcrumbTitle, 
-            description, 
-            content, 
-            author, 
-            category, 
-            tags, 
-            status, 
-            faqs 
+        let {
+            title,
+            slug,
+            breadcrumbTitle,
+            description,
+            content,
+            author,
+            category,
+            tags,
+            status,
+            faqs,
+            buttonText,
+            buttonUrl
         } = req.body;
 
         if (title) article.title = title;
@@ -200,6 +206,14 @@ exports.updateArticle = async (req, res, next) => {
         if (author) article.author = author;
         if (category) article.category = category;
         if (status) article.status = status;
+
+        if (buttonText !== undefined) {
+            article.buttonText = buttonText.trim();
+        }
+
+        if (buttonUrl !== undefined) {
+            article.buttonUrl = buttonUrl.trim();
+        }
 
         if (slug) {
             const sanitizedSlug = slugify(slug);
