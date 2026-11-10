@@ -31,7 +31,7 @@ exports.getBestSellers = async (req, res, next) => {
         })
         .sort({ bestSellerOrder: 1, updatedAt: -1 })
         .limit(12)
-        .select('_id name slug price image images rating salesCount stock status isBestSeller packages unit');
+        .select('_id name slug price image images rating numReviews salesCount stock status isBestSeller packages unit');
 
         // 2. If fewer than 12 manually selected, backfill with top selling / highest rated products
         if (products.length < 12) {
@@ -44,7 +44,7 @@ exports.getBestSellers = async (req, res, next) => {
             })
             .sort({ salesCount: -1, rating: -1, createdAt: -1 })
             .limit(remainingCount)
-            .select('_id name slug price image images rating salesCount stock status isBestSeller packages unit');
+            .select('_id name slug price image images rating numReviews salesCount stock status isBestSeller packages unit');
 
             products = [...products, ...autoProducts];
         }
@@ -104,7 +104,7 @@ exports.getRelatedProducts = async (req, res, next) => {
             stock: { $gt: 0 }
         })
         .limit(4)
-        .select('_id name slug price image images rating stock status');
+        .select('_id name slug price image images rating numReviews stock status');
 
         res.json({
             success: true,
