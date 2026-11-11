@@ -13,11 +13,8 @@ router.get('/merchant-feed.xml', merchantController.getXmlFeed);
 // Public Read-Only Health & Google Merchant API Connectivity Check (Zero mutations, zero secrets)
 router.get('/health', merchantController.getHealth);
 
-// Merchant Sync Triggers (Strictly guarded by MERCHANT_SYNC_ENABLED)
-router.get('/sync-test', merchantController.testSync);
-router.post('/sync-test', merchantController.testSync);
-router.get('/sync-all', merchantController.triggerFullSync);
-router.post('/sync-all', merchantController.triggerFullSync);
+// SECURITY: pehle /sync-test aur /sync-all bina login ke khule the (koi bhi GET se full sync chala sakta tha,
+// jisse DB aur Google API par load jata). Ab sirf admin routes hain: POST /sync aur POST /test-sync (neeche).
 
 // Admin Read-Only Audit & Status Routes
 router.get('/status', adminOnly, merchantController.getStatus);
