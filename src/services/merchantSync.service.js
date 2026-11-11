@@ -14,7 +14,7 @@ const {
 } = require('../config/googleMerchant');
 
 const BASE_STORE_URL = process.env.STORE_URL || 'https://aciagro.com';
-const BRAND_NAME = 'ACI Agro Solutions';
+const BRAND_NAME = 'ACI Agro Solution';
 
 // Shipping review status constant
 const SHIPPING_VERIFICATION_STATUS = 'CODE_REVIEWED_UNVERIFIED_LIVE';
@@ -28,6 +28,27 @@ function stripHtml(html) {
     .replace(/<[^>]*>?/gm, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Merchant Center title safai (CONSERVATIVE).
+ * Sirf yeh hatata hai: shuru ka bullet (•), aakhir ka brand ("Aci Agro Solution", typo ke saath) aur
+ * aakhir ka "Ayurvedic Herbal Medicine" (Google ko "medicine" wala text pasand nahi).
+ * Baaki title jaisa hai waisa rehta hai, taaki "... Green Apple - 1000 ml" jaise size wale approved titles na badlein.
+ */
+function cleanMerchantTitle(name) {
+  const original = String(name || '').replace(/\s+/g, ' ').trim();
+  let t = original.replace(/^[•·\-–—\s]+/, '');
+  let prev;
+  do {
+    prev = t;
+    t = t
+      .replace(/\s*[-–—|:]?\s*ayurvedic herbal medicine\s*$/i, '')
+      .replace(/\s*[-–—|:]?\s*aci\s*agro\s*s\w*\s*$/i, '')
+      .trim();
+  } while (t !== prev);
+  t = t.replace(/[\s|\-–—:,&]+$/, '');
+  return (t || original).slice(0, 150);
 }
 
 /**
@@ -67,7 +88,7 @@ function evaluateProductIdentifiers(product) {
  */
 function mapProductToGoogle(product) {
   const productId = product._id.toString();
-  const title = (product.name || '').trim().slice(0, 150);
+  const title = cleanMerchantTitle(product.name);
 
   // Clean description
   let fullDesc = '';
@@ -538,7 +559,7 @@ async function generateXmlFeed() {
   <channel>
     <title>${escapeXml(BRAND_NAME)} - Official Product Feed</title>
     <link>${escapeXml(BASE_STORE_URL)}</link>
-    <description>Authentic Ayurvedic, Herbal and Agricultural Products by ACI Agro Solutions</description>
+    <description>Authentic Ayurvedic, Herbal and Agricultural Products by ACI Agro Solution</description>
 `;
 
   for (const product of products) {
