@@ -26,6 +26,18 @@ const uploadToCloudinary = (fileBuffer) => {
 /*
 CREATE PRODUCT
 */
+
+// Saaf slug: "Aloe Vera Juice - Natural Blend (500 ml)" -> "aloe-vera-juice-natural-blend-500-ml"
+// (pehle triple hyphen "---" aur shuru mein "-" bante the). Sirf NAYE products ke liye use hota hai.
+const makeSlug = (name) =>
+  String(name || '')
+    .toLowerCase()
+    .replace(/[^\w\s-]+/g, '')
+    .trim()
+    .replace(/[\s_]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+
 exports.createProduct = async (data, files) => {
   const allFiles = files || [];
   const galleryFiles = allFiles.filter(f => !f.fieldname || !f.fieldname.startsWith('package_image_'));
@@ -40,7 +52,7 @@ exports.createProduct = async (data, files) => {
   );
   const images = uploadResults.map(result => result.secure_url);
   const publicIds = uploadResults.map(result => result.public_id);
-  const slug = data.name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
+  const slug = makeSlug(data.name);
 
   // Safely handle FAQs and Packages which might already be parsed by the controller
   let finalFaqs = [];
@@ -399,7 +411,10 @@ exports.updateProduct = async (id, data, files) => {
 
   Object.assign(product, data);
   
-  if (data.name) { product.slug = data.name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, ''); }
+  // IMPORTANT: naam badalne par slug (URL) ab NAHI badalta. Pehle har edit par slug naam se dobara banta tha,
+  // jisse purane URLs 404 ho jate the (Google ranking, backlinks aur Merchant ke links toot jate the).
+  // Slug tabhi badlega jab data mein slug saaf-saaf bheja jaye.
+  if (data.slug) { product.slug = makeSlug(data.slug); }
 
   // --- 4. Save and Return ---
   try {
